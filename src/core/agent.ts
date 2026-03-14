@@ -9,7 +9,7 @@ import { MemoryStore } from "../memory/store.js";
 import { loadConfig } from "./config.js";
 import { saveMessage } from "./chathistory.js";
 
-const MAX_ROUNDS = 10;
+const MAX_ROUNDS = 6;
 const OLLAMA_URL = "http://172.168.1.162:11434";
 
 interface Message {
@@ -120,6 +120,7 @@ export class Agent {
         temperature: 0.3,
         num_predict: 4096,
         num_ctx: 8192,
+        think: false,
       },
     };
 
@@ -264,6 +265,7 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
     let totalToolCalls = 0;
     let lastContent = "";
     let toolResults: string[] = [];
+    let calledTools: Set<string> = new Set();
 
     while (round < MAX_ROUNDS) {
       round++;
@@ -300,6 +302,15 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
         const fnArgs = tc.function?.arguments || {};
         totalToolCalls++;
 
+        // Skip if same tool+args called before
+        const callKey = fnName + ":" + JSON.stringify(fnArgs);
+        if (calledTools.has(callKey)) {
+          log("  ⏭", fnName, "SKIPPED (duplicate)", "33");
+          messages.push({ role: "tool", content: "Already called — see previous result.", tool_call_id: tc.id || fnName });
+          continue;
+        }
+        calledTools.add(callKey);
+
         log("  →", fnName, JSON.stringify(fnArgs).slice(0, 80), "0");
 
         const start = Date.now();
@@ -333,11 +344,17 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
       finalResponse = toolResults.filter(r => r && !r.startsWith("Error:")).join("\n\n");
     }
 
-    // If model's text is short and references results, show the LAST tool result only
-    if (finalResponse && finalResponse.length < 200 && toolResults.length > 0) {
-      const lastGood = toolResults.filter(r => r && r.length > 50 && !r.startsWith("Error:")).pop();
-      if (lastGood) {
-        finalResponse += "\n\n" + lastGood;
+    // Always include tool results that contain code or compile output
+    if (toolResults.length > 0) {
+      const codeResults = toolResults.filter(r => 
+        r && r.length > 100 && !r.startsWith("Error:") && 
+        (r.includes("```cpp") || r.includes("✅ Written") || r.includes("✅ Compiled") || r.includes("❌ Compile"))
+      );
+      if (codeResults.length > 0 && !finalResponse.includes("```cpp")) {
+        finalResponse = codeResults.join("\n\n");
+        if (lastContent && lastContent.length < 200) {
+          finalResponse = lastContent + "\n\n" + finalResponse;
+        }
       }
     }
 
