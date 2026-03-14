@@ -9,7 +9,7 @@ import { MemoryStore } from "../memory/store.js";
 import { loadConfig } from "./config.js";
 import { saveMessage } from "./chathistory.js";
 
-const MAX_ROUNDS = 6;
+const MAX_ROUNDS = 8;
 const OLLAMA_URL = "http://172.168.1.162:11434";
 
 interface Message {
@@ -198,6 +198,16 @@ ENVIRONMENT:
 USER'S ACTUAL LIBRARIES (use THESE exact includes):
 - ADS1115: #include <Adafruit_ADS1X15.h> // from Adafruit_ADS1X15\n- AHTX0: #include <Adafruit_AHTX0.h> // from Adafruit_AHTX0\n- BME280: #include <SparkFunBME280.h> // from SparkFun_BME280\n- BME680: #include <Zanshin_BME680.h> // from BME680-1.0.10\n- ENS160: #include <SparkFun_ENS160.h> // from SparkFun_Indoor_Air_Quality_Sensor_-_ENS160\n- ETBus: #include <ETBus.h> // from ETBus\n- HTU21D: #include <SparkFunHTU21D.h> // from SparkFun_HTU21D_Humidity_and_Temperature_Sensor_Breakout\n- INA219: #include <Adafruit_INA219.h> // from Adafruit_INA219\n- NeoPixel: #include <NeoPixelSegmentBus.h> // from NeoPixelBus_by_Makuna\n- PubSubClient: #include <ShimClient.h> // from PubSubClient\n- RF24: #include <RF24Network_config.h> // from RF24Network\n- SSD1306: #include <SH1106Spi.h> // from esp8266-oled-ssd1306
 IMPORTANT: Do NOT use Adafruit_HTU21DF.h — it doesn't exist. Use SparkFunHTU21D.h.
+
+ET-BUS: For ANY ET-Bus project, read /home/mantiz010/kate/references/etbus_example.ino FIRST.
+ET-Bus is UDP multicast — do NOT use PubSubClient/MQTT with ET-Bus. They are different protocols.
+ET-BUS API:
+  etbus.begin("DEVICE_ID", "sensor.type", "Name", "1.0");
+  etbus.enableEncryptionHex("b6f0c3d7a12e4f9c8d77e0b35b9a6c1f4b2a3e19c0d4f8a1b7c2d9e3f4a5b6c7");
+  etbus.onCommand(callback);
+  etbus.loop(); // in loop()
+  etbus.sendState(JsonObject); // send data
+  Requires: #include <ETBus.h> — do NOT include ETChaCha20Poly1305.h directly, ETBus handles it.
 
 ESP BOARDS:
 - ESP8266 (D1 Mini): WiFi only, use #include <ESP8266WiFi.h>
