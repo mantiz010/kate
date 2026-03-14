@@ -108,6 +108,10 @@ function classifyComplexity(prompt: string, toolCount: number = 0): { complexity
   }
 
   // Default to moderate
+  // Code/create tasks → complex (uses qwen2.5-coder:14b)
+  const codePat = /create|write|build|code|sketch|arduino|compile|script|function|class|program|implement|develop|generate|improve|fix.*code|refactor|debug|sensor|mqtt|esp32|esp8266|zigbee|etbus/i;
+  if (codePat.test(prompt)) return { complexity: "complex", confidence: 0.85, reason: "Code task → qwen2.5-coder:14b" };
+
   return { complexity: "moderate", confidence: 0.5, reason: "No strong signals, defaulting to moderate" };
 }
 
