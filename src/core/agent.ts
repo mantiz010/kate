@@ -184,6 +184,7 @@ RULES:
 8. Use MINIMUM tool calls needed. Don't explore the filesystem for fun.
 9. One tool call per step unless parallel makes sense.
 
+HOME DIRECTORY: /home/mantiz010 (NOT /home/kate)
 ENVIRONMENT:
 - Arduino projects: ~/Arduino/ (500+ projects, libraries in ~/Arduino/libraries/)
 - Kate projects: ~/kate/projects/arduino/
@@ -332,11 +333,11 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
       finalResponse = toolResults.filter(r => r && !r.startsWith("Error:")).join("\n\n");
     }
 
-    // If model's text is short but tools returned code/data, append it
+    // If model's text is short and references results, show the LAST tool result only
     if (finalResponse && finalResponse.length < 200 && toolResults.length > 0) {
-      const bigResults = toolResults.filter(r => r && r.length > 100 && !r.startsWith("Error:"));
-      if (bigResults.length > 0) {
-        finalResponse += "\n\n" + bigResults.join("\n\n");
+      const lastGood = toolResults.filter(r => r && r.length > 50 && !r.startsWith("Error:")).pop();
+      if (lastGood) {
+        finalResponse += "\n\n" + lastGood;
       }
     }
 
@@ -386,6 +387,12 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
     history.push({ role: "user", content: msg.content });
     history.push({ role: "assistant", content: finalResponse });
     this.sessions.set(sessionId, history);
+
+    // Deduplicate — remove repeated blocks
+    const blocks = finalResponse.split("\n═══════════════════════════════════════\n");
+    if (blocks.length > 2) {
+      finalResponse = blocks[0] + "\n═══════════════════════════════════════\n" + blocks[blocks.length - 1];
+    }
 
     log("💬", "REPLY", finalResponse.slice(0, 80), "36");
     return finalResponse;

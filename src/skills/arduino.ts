@@ -215,18 +215,47 @@ void loop() {
       }
 
       case "arduino_write": {
-        const project = (args.project as string).trim();
-        const code = args.code as string;
-        if (!code || code.length < 50) return "❌ Code too short. Write COMPLETE compilable code.";
-        const projDir = path.join(PROJECT_DIR, project);
+        // Accept any arg combo the model sends
+        const code = (args.code || args.content || "") as string;
+        if (!code || code.length < 50) return "❌ Code too short.";
+        
+        // Get project name from whatever arg exists
+        let name = (args.project || args.name || "") as string;
+        let fullPath = (args.path || "") as string;
+        
+        // Expand ~
+        if (fullPath.startsWith("~")) fullPath = fullPath.replace("~", os.homedir());
+        
+        // Extract name from path if no name given
+        if (!name && fullPath) {
+          const parts = fullPath.split("/").filter(Boolean);
+          name = parts[parts.length - 1] || "";
+          // If name looks like a directory (no extension), use it
+          if (name === "arduino" || name === "projects" || name === "kate" || !name) {
+            name = parts[parts.length - 2] || "untitled";
+          }
+        }
+        if (!name) name = "untitled";
+        
+        // Save to Kate projects
+        const projDir = path.join(PROJECT_DIR, name);
         ensureDir(projDir);
-        fs.writeFileSync(path.join(projDir, project + ".ino"), code);
+        const inoPath = path.join(projDir, name + ".ino");
+        fs.writeFileSync(inoPath, code);
+        
+        // Also save project.json if not exists
+        const metaPath = path.join(projDir, "project.json");
+        if (!fs.existsSync(metaPath)) {
+          fs.writeFileSync(metaPath, JSON.stringify({ name, board: "esp8266", created: Date.now() }));
+        }
+        
         const preview = code.length > 3000 ? code.slice(0, 3000) + "\n// ... (" + code.length + " chars)" : code;
-        return "✅ Written: " + project + ".ino (" + code.length + " chars)\n\n```cpp\n" + preview + "\n```";
+        return "✅ Written: " + name + "/" + name + ".ino (" + code.length + " chars)\n\n```cpp\n" + preview + "\n```";
       }
 
       case "arduino_read": {
-        const project = (args.project as string).trim();
+        let project = ((args.project || args.path || args.name || "") as string).trim();
+        if (project.startsWith("~")) project = project.replace("~", os.homedir());
         // Check Kate projects
         let inoPath = path.join(PROJECT_DIR, project, project + ".ino");
         if (!fs.existsSync(inoPath)) {
@@ -263,9 +292,16 @@ void loop() {
       }
 
       case "arduino_compile": {
-        const project = (args.project as string).trim();
-        let projDir = path.join(PROJECT_DIR, project);
-        if (!fs.existsSync(projDir)) projDir = path.join(USER_ARDUINO, project);
+        let project = ((args.project || args.path || args.name || "") as string).trim();
+        if (project.startsWith("~")) project = project.replace("~", os.homedir());
+        let projDir = "";
+        if (project.startsWith("/") && fs.existsSync(project)) {
+          projDir = project;
+        } else {
+          const name = project.includes("/") ? project.split("/").filter(Boolean).pop() || project : project;
+          projDir = path.join(PROJECT_DIR, name);
+          if (!fs.existsSync(projDir)) projDir = path.join(USER_ARDUINO, name);
+        }
         if (!fs.existsSync(projDir)) return "❌ Not found: " + project;
 
         let fqbn = "";
@@ -290,10 +326,17 @@ void loop() {
       }
 
       case "arduino_upload": {
-        const project = (args.project as string).trim();
+        let project = ((args.project || args.path || args.name || "") as string).trim();
+        if (project.startsWith("~")) project = project.replace("~", os.homedir());
         const port = args.port as string;
-        let projDir = path.join(PROJECT_DIR, project);
-        if (!fs.existsSync(projDir)) projDir = path.join(USER_ARDUINO, project);
+        let projDir = "";
+        if (project.startsWith("/") && fs.existsSync(project)) {
+          projDir = project;
+        } else {
+          const name = project.includes("/") ? project.split("/").filter(Boolean).pop() || project : project;
+          projDir = path.join(PROJECT_DIR, name);
+          if (!fs.existsSync(projDir)) projDir = path.join(USER_ARDUINO, name);
+        }
 
         let fqbn = "";
         try {
