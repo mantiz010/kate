@@ -108,9 +108,9 @@ function classifyComplexity(prompt: string, toolCount: number = 0): { complexity
   }
 
   // Default to moderate
-  // Code/create tasks → complex (uses qwen2.5-coder:14b)
+  // Code/create tasks → complex (uses qwen3-coder)
   const codePat = /create|write|build|code|sketch|arduino|compile|script|function|class|program|implement|develop|generate|improve|fix.*code|refactor|debug|sensor|mqtt|esp32|esp8266|zigbee|etbus/i;
-  if (codePat.test(prompt)) return { complexity: "complex", confidence: 0.85, reason: "Code task → qwen2.5-coder:14b" };
+  if (codePat.test(prompt)) return { complexity: "complex", confidence: 0.85, reason: "Code task → qwen3-coder" };
 
   return { complexity: "moderate", confidence: 0.5, reason: "No strong signals, defaulting to moderate" };
 }
@@ -140,11 +140,11 @@ export class SmartRouter implements Provider {
     // Default route config — maps complexity to models
     // Users can override via config
     this.routes = {
-      trivial: 'glm-4.7-flash',    // fastest available
-      simple: 'glm-4.7-flash',     // fast
-      moderate: 'glm-4.7-flash',   // balanced
-      complex: 'qwen2.5-coder:14b',    // capable
-      expert: 'qwen2.5-coder:14b',     // most capable
+      trivial: 'qwen3-coder',    // fastest available
+      simple: 'qwen3-coder',     // fast
+      moderate: 'qwen3-coder',   // balanced
+      complex: 'qwen3-coder',    // capable
+      expert: 'qwen3-coder',     // most capable
     };
   }
 

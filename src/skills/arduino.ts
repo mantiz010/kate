@@ -85,7 +85,7 @@ function findLocalLib(name: string): { found: boolean; name: string; headers: st
     let score = 0;
     for (const t of terms) { if (lLow.includes(t)) score += 10; }
     return { name: l, score };
-  }).filter(s => s.score > 0).sort((a, b) => b.score - a.score);
+  }).filter(s => s.score >= 10).sort((a, b) => b.score - a.score);
 
   if (scored.length === 0) return { found: false, name: "", headers: [], include: "" };
 
@@ -152,7 +152,7 @@ const arduino: Skill = {
         const boardInput = (args.board as string) || "esp32";
         const board = resolveBoard(boardInput);
         const b = BOARDS[board] || BOARDS["esp32"];
-        const desc = (args.description as string) || name;
+        const desc = (args.description as string || "") || name;
 
         // ALWAYS search existing projects first
         const matches = searchExisting(name + " " + desc);

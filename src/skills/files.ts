@@ -1,5 +1,6 @@
 import type { Skill, SkillContext } from "../core/types.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const files: Skill = {
@@ -52,6 +53,12 @@ const files: Skill = {
   ],
 
   async execute(toolName: string, args: Record<string, unknown>, ctx: SkillContext): Promise<string> {
+    // Expand ~ in ALL path arguments
+    for (const key of Object.keys(args)) {
+      if (typeof args[key] === "string" && (args[key] as string).startsWith("~")) {
+        args[key] = (args[key] as string).replace("~", os.homedir());
+      }
+    }
     switch (toolName) {
       case "read_file": {
         const filePath = args.path as string;
