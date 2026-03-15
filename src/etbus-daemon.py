@@ -326,7 +326,7 @@ async def stats_loop():
                 pass
 
             try:
-                state["temp"] = round(float(r("cat /sys/class/thermal/thermal_zone0/temp")) / 1000, 1)
+                state["temp"] = round(float(r("cat /sys/class/thermal/thermal_zone0/temp 2>/dev/null")) / 1000, 1)
             except Exception:
                 state["temp"] = 0
 
