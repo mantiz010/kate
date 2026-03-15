@@ -9,7 +9,7 @@ import { MemoryStore } from "../memory/store.js";
 import { loadConfig } from "./config.js";
 import { saveMessage } from "./chathistory.js";
 
-const MAX_ROUNDS = 8;
+const MAX_ROUNDS = 12;
 const OLLAMA_URL = "http://172.168.1.162:11434";
 
 interface Message {
@@ -119,7 +119,7 @@ export class Agent {
       options: {
         temperature: 0.3,
         num_predict: 4096,
-        num_ctx: 8192,
+        num_ctx: 16384,
         think: false,
       },
     };
@@ -183,15 +183,17 @@ RULES:
 6. If a tool fails, try a different approach or tool.
 7. Show results clearly — code in code blocks, data formatted.
 8. Use MINIMUM tool calls needed. Don't explore the filesystem for fun.
-9. One tool call per step unless parallel makes sense.
+9. For Arduino: arduino_new → arduino_write → DONE. Max 3 tool calls. Don't search 5 directories first.
+10. For ET-Bus: read /home/mantiz010/kate/references/etbus_example.ino ONCE, then write code. Don't explore.
 
 HOME DIRECTORY: /home/mantiz010 (NOT /home/kate)
 
 SELF-IMPROVEMENT RULES:
-- You already have 40 builtin skills with 345 tools. Check what exists BEFORE creating.
-- NEVER create skills that duplicate builtins: arduino, shell, files, docker, proxmox, mqtt, etbus, etc.
-- Only create skills for MISSING capabilities: homelab health, notifications, weather, automations.
-- When self_review finds "arduino failures" — the fix is to IMPROVE the code you write, not make a new skill.
+- You have 40+ builtin skills, 345+ tools. NEVER create duplicates.
+- YOU ALREADY HAVE: arduino (create/compile/upload/libraries), mqtt (publish/subscribe), shell (run any command), files (read/write), docker, proxmox, etbus, ssh, network, monitoring, git, database, backup, scheduler, browser, web search, services, packages.
+- NEVER create: mqtt_publisher, sensor_reader, wifi_connector, device_monitor, data_formatter, deep_sleep_manager, ota_updater — these are ALL handled by existing tools.
+- ONLY create skills for things NO existing tool can do. Examples: homelab_health (check all services at once), notifications (push alerts to phone), dashboard_api (custom REST endpoints).
+- When you find failures — fix your CODE, not make new skills.
 ENVIRONMENT:
 - Arduino projects: ~/Arduino/ (500+ projects, libraries in ~/Arduino/libraries/)
 - Kate projects: ~/kate/projects/arduino/
@@ -209,13 +211,18 @@ IMPORTANT: Do NOT use Adafruit_HTU21DF.h — it doesn't exist. Use SparkFunHTU21
 
 ET-BUS: For ANY ET-Bus project, read /home/mantiz010/kate/references/etbus_example.ino FIRST.
 ET-Bus is UDP multicast — do NOT use PubSubClient/MQTT with ET-Bus. They are different protocols.
-ET-BUS API:
-  etbus.begin("DEVICE_ID", "sensor.type", "Name", "1.0");
-  etbus.enableEncryptionHex("b6f0c3d7a12e4f9c8d77e0b35b9a6c1f4b2a3e19c0d4f8a1b7c2d9e3f4a5b6c7");
-  etbus.onCommand(callback);
-  etbus.loop(); // in loop()
-  etbus.sendState(JsonObject); // send data
-  Requires: #include <ETBus.h> — do NOT include ETChaCha20Poly1305.h directly, ETBus handles it.
+ET-BUS API — read /home/mantiz010/kate/references/etbus_example.ino and COPY THAT PATTERN:
+  #include <ETBusWiFiManager.h> and #include <ETBus.h>
+  ETBusWiFiManager wm;  // WiFi manager with captive portal
+  ETBus etbus;          // MUST be global
+  wm.begin("ETBus-DeviceName");  // handles WiFi connection
+  etbus.begin(name, "sensor.type", "Name", "v1.0");
+  etbus.enableEncryptionHex(psk.c_str());  // encryption from portal
+  etbus.loop();  // in loop()
+  StaticJsonDocument<128> payload;  // NOT etbus.newData()
+  payload["temp"] = value;
+  etbus.sendState(payload.as<JsonObject>());
+  Do NOT use MQTT/PubSubClient. Do NOT include ETChaCha20Poly1305.h directly.
 
 ESP BOARDS:
 - ESP8266 (D1 Mini): WiFi only, use #include <ESP8266WiFi.h>

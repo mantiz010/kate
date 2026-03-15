@@ -224,12 +224,17 @@ void loop() {
         if (!name && fullPath) {
           const parts = fullPath.split("/").filter(Boolean);
           name = parts[parts.length - 1] || "";
-          // If name looks like a directory (no extension), use it
+          // Strip .ino extension if present
+          if (name.endsWith(".ino")) name = name.replace(/\.ino$/, "");
+          // If name is a parent dir name, go up
           if (name === "arduino" || name === "projects" || name === "kate" || !name) {
             name = parts[parts.length - 2] || "untitled";
+            if (name.endsWith(".ino")) name = name.replace(/\.ino$/, "");
           }
         }
         if (!name) name = "untitled";
+        // Always strip .ino from name
+        name = name.replace(/\.ino$/, "");
         
         // Save to Kate projects
         const projDir = path.join(PROJECT_DIR, name);
