@@ -40,6 +40,7 @@ export async function startWebServer(port: number = 3201) {
   const providers = new ProviderRegistry(config);
   const skills = new SkillManager();
   await skills.loadBuiltin(config.skills.builtin);
+  await skills.loadFromDirectory(config.skills.directory || require("path").join(require("os").homedir(), ".kate", "skills"));
 
   const agent = new Agent(config, providers, skills, memory);
   const workerPool = new WorkerPool(config);

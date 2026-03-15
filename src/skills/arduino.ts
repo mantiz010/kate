@@ -58,9 +58,16 @@ function searchExisting(keywords: string): { name: string; path: string; ino: st
   return dirs.map(d => {
     const dLow = d.toLowerCase().replace(/[_\-]/g, " ");
     let score = 0;
-    for (const w of words) { if (dLow.includes(w)) score += 10; }
+    for (const w of words) {
+      if (dLow.includes(w)) {
+        // Specific words score higher than generic ones
+        if (w.length > 5) score += 30;       // htu21d, deepsleep, bme280
+        else if (w.length > 3) score += 15;  // mqtt, esp32
+        else score += 5;                      // d1, led
+      }
+    }
     return { name: d, score };
-  }).filter(s => s.score >= 20).sort((a, b) => b.score - a.score).slice(0, 10).map(s => {
+  }).filter(s => s.score >= 30).sort((a, b) => b.score - a.score).slice(0, 10).map(s => {
     const dir = path.join(USER_ARDUINO, s.name);
     const inos = fs.readdirSync(dir).filter(f => f.endsWith(".ino"));
     return { name: s.name, path: dir, ino: inos[0] || "" };
@@ -158,17 +165,8 @@ const arduino: Skill = {
         const matches = searchExisting(name + " " + desc);
         let existingInfo = "";
         if (matches.length > 0) {
-          const best = matches[0];
-          if (best.ino) {
-            const code = readCode(path.join(best.path, best.ino));
-            const preview = code.length > 3000 ? code.slice(0, 3000) + "\n// ... (" + code.length + " chars total)" : code;
-            existingInfo = "📂 Found " + matches.length + " existing project(s):\n" +
-              matches.slice(0, 5).map(m => "  • ~/Arduino/" + m.name).join("\n") + "\n\n" +
-              "**Best match: ~/Arduino/" + best.name + "**\n\n" +
-              "```cpp\n" + preview + "\n```\n\n" +
-              "═══════════════════════════════════════\n" +
-              "Creating improved version below:\n\n";
-          }
+          existingInfo = "📂 Found " + matches.length + " similar project(s):\n" +
+            matches.slice(0, 5).map(m => "  • ~/Arduino/" + m.name).join("\n") + "\n\n";
         }
 
         // Create project with REAL code — model writes this via arduino_write
@@ -204,14 +202,10 @@ void loop() {
         return existingInfo +
           "✅ Project created: " + name + "\n" +
           "Board: " + b.name + " (" + b.fqbn + ")\n" +
-          "Location: " + projDir + "\n" +
-          "Libraries: " + USER_LIBS + "\n\n" +
-          "**Now use arduino_write to write the full code for this project.**\n" +
-          "The code must be COMPLETE and COMPILABLE. Include:\n" +
-          "- " + (b.wifi ? "#include <" + b.wifi + ">" : "No WiFi on this board") + "\n" +
-          "- WiFi: SSID=mantiz010, PASS=DavidCross010\n" +
-          "- MQTT: host=172.168.1.8, port=1883, user=mantiz010, pass=DavidCross010\n" +
-          "- User's libraries are in " + USER_LIBS;
+          "Location: " + projDir + "\n\n" +
+          "**Now use arduino_write to write COMPLETE COMPILABLE code.**\n" +
+          "WiFi: SSID=mantiz010, PASS=DavidCross010\n" +
+          "Use ONLY what the user asked for — MQTT OR ETBus, not both.";
       }
 
       case "arduino_write": {

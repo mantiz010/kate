@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 
 const log = createLogger("skillforge");
-const SKILLS_DIR = path.join(os.homedir(), ".aegis", "skills");
+const SKILLS_DIR = path.join(os.homedir(), ".kate", "skills");
 
 function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -172,6 +172,26 @@ ${t.params.map(p => `        { name: "${p.name}", type: "${p.type}", description
   return `// Kate Skill: ${name}
 // Generated: ${new Date().toISOString()}
 
+const { execSync, exec } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+// Helper: run a shell command and return output
+function run(cmd, timeout) {
+  try {
+    return execSync(cmd, { timeout: timeout || 15000, encoding: "utf-8" }).trim();
+  } catch (err) {
+    return "Error: " + (err.stderr || err.message || "").slice(0, 300);
+  }
+}
+
+// Common paths
+const HOME = os.homedir();
+const ARDUINO_DIR = path.join(HOME, "Arduino");
+const ARDUINO_LIBS = path.join(ARDUINO_DIR, "libraries");
+const KATE_DIR = path.join(HOME, "kate");
+
 const skill = {
   id: "${id}",
   name: "${name}",
@@ -191,7 +211,8 @@ ${cases}
   },
 };
 
-export default skill;
+module.exports = skill;
+module.exports.default = skill;
 `;
 }
 
@@ -217,13 +238,13 @@ function validateSkillFile(filePath: string): ValidationResult {
 
   // Critical checks
   if (code.includes("module.exports")) {
-    errors.push("Uses module.exports — MUST use 'export default skill' instead");
+    // module.exports is fine;
   }
 
   if (!code.includes("export default")) {
-    errors.push("Missing 'export default' — skill won't load");
+    // module.exports is also valid;
   }
-  info.hasExport = code.includes("export default");
+  info.hasExport = code.includes("export default") || code.includes("module.exports");
 
   if (!code.includes("tools:") && !code.includes("tools :")) {
     errors.push("Missing 'tools' property");
@@ -457,12 +478,34 @@ ${t.params.map(p => `        { name: "${p.name}", type: "${p.type}", description
     }`).join(",\n");
 
         const cases = tools.map(t => {
-          const impl = implementations[t.name] || `return "Executed ${t.name}: " + JSON.stringify(args);`;
+          let impl = implementations[t.name] || `return "Executed ${t.name}: " + JSON.stringify(args);`;
+          // Sanitize model-injected code
+          impl = impl.replace(/export\s+default\s+/g, "");
+          impl = impl.replace(/^import\s+.*$/gm, "// import removed");
+          impl = impl.replace(/module\.exports\s*=/g, "// module.exports removed");
           return `      case "${t.name}": {\n${impl.split("\n").map((l: string) => "        " + l).join("\n")}\n      }`;
         }).join("\n\n");
 
         const code = `// Kate Skill: ${name}
 // Generated: ${new Date().toISOString()}
+
+const { execSync, exec } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+
+function run(cmd, timeout) {
+  try {
+    return execSync(cmd, { timeout: timeout || 15000, encoding: "utf-8" }).trim();
+  } catch (err) {
+    return "Error: " + (err.stderr || err.message || "").slice(0, 300);
+  }
+}
+
+const HOME = os.homedir();
+const ARDUINO_DIR = path.join(HOME, "Arduino");
+const ARDUINO_LIBS = path.join(ARDUINO_DIR, "libraries");
+const KATE_DIR = path.join(HOME, "kate");
 
 const skill = {
   id: "custom.${safeName}",
@@ -483,7 +526,8 @@ ${cases}
   },
 };
 
-export default skill;
+module.exports = skill;
+module.exports.default = skill;
 `;
 
         fs.writeFileSync(skillFile, code, "utf-8");

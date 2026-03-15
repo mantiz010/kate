@@ -269,26 +269,28 @@ const selfimprove: Skill = {
       case "self_create_tool": {
         const name = args.name as string;
         const description = args.description as string;
-        const reason = args.reason as string;
+        const reason = (args.reason as string) || "Self-improvement";
+        const toolsJson = (args.tools as string) || "[]";
 
-        // Use skill_create through the context
-        const safeName = name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-        const toolsJson = args.tools as string;
+        log.info("Kate self-creating skill: " + name + " — " + reason);
 
-        // Log the self-improvement
-        log.info("Kate creating tool for herself: " + name + " because: " + reason);
-
-        // Create via skillforge
-        const result = await ctx.log.info("Self-creating skill: " + name);
+        // Actually create it via skillforge
+        const sfSkill = (await import("./skillforge.js")).default;
+        const result = await sfSkill.execute("skill_create", {
+          name,
+          description,
+          tools: toolsJson,
+        }, ctx);
 
         // Mark any related gap as fixed
+        const safeName = name.toLowerCase().replace(/[^a-z0-9-]/g, "-");
         const relatedGap = gaps.find(g => g.status === "open" && (g.suggestedTool.includes(safeName) || g.description.toLowerCase().includes(name.toLowerCase())));
         if (relatedGap) {
           relatedGap.status = "fixed";
           saveGaps();
         }
 
-        return "Kate wants to create: " + name + "\nReason: " + reason + "\nDescription: " + description + "\n\nUse skill_create to build it:\n  skill_create name=\"" + safeName + "\" description=\"" + description + "\" tools='" + toolsJson + "'";
+        return "🔧 Kate self-created skill: " + name + "\nReason: " + reason + "\n\n" + result + "\n\nRestart Kate to load: sudo systemctl restart kate";
       }
 
       case "self_learn": {
