@@ -329,7 +329,7 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
 
         // Skip if same tool+args called before
         const callKey = fnName + ":" + JSON.stringify(fnArgs);
-        if (calledTools.has(callKey)) {
+        if (calledTools.has(callKey) && !fnName.includes("compile")) {
           log("  ⏭", fnName, "SKIPPED (duplicate)", "33");
           messages.push({ role: "tool", content: "Already called — see previous result.", tool_call_id: tc.id || fnName });
           continue;

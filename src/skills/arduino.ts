@@ -317,10 +317,13 @@ void loop() {
             `arduino-cli compile --fqbn "${fqbn}" --libraries "${USER_LIBS}" "${projDir}" 2>&1`,
             { timeout: 120000 }
           );
-          const out = (stdout + "\n" + stderr).trim();
-          return "✅ Compiled: " + project + " (" + fqbn + ")\n" + out.slice(-500);
+          const clean = (stdout + "\n" + stderr).replace(/\x1b\[[0-9;]*m/g, "").trim();
+          const sizeLines = clean.split("\n").filter((l: string) => l.includes("Sketch uses") || l.includes("Global variables"));
+          return "✅ Compiled: " + project + " (" + fqbn + ")\n" + sizeLines.join("\n");
         } catch (err: any) {
-          return "❌ Compile failed:\n" + ((err.stdout || "") + "\n" + (err.stderr || "")).slice(-800);
+          const errClean = ((err.stdout || "") + "\n" + (err.stderr || "")).replace(/\x1b\[[0-9;]*m/g, "");
+          const errLines = errClean.split("\n").filter((l: string) => l.includes("error:") || l.includes("Error during"));
+          return "❌ Compile failed:\n" + errLines.join("\n");
         }
       }
 
