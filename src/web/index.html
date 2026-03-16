@@ -293,9 +293,16 @@ let ws,skills=[],hist=[];const $=id=>document.getElementById(id),esc=t=>{const d
 function connect(){const p=location.protocol==='https:'?'wss':'ws';ws=new WebSocket(`${p}://${location.host}`);
 ws.onopen=()=>{$('conn').className='status on';$('cTxt').textContent='Online';poll();pollA()};
 ws.onmessage=e=>{const d=JSON.parse(e.data);
+if(d.type==='token'){
+  let el=$('streaming');
+  if(!el){const m=document.createElement('div');m.className='m a';m.innerHTML='<div class="m-name">kate</div><div class="m-body" id="streaming"></div>';$('feed').appendChild(m);el=$('streaming');$('feed').scrollTop=$('feed').scrollHeight}
+  el.textContent+=d.content;
+  $('feed').scrollTop=$('feed').scrollHeight;
+  return;
+}
 if(d.type==='system')msg('s','sys',d.content);
 else if(d.type==='status')(d.content==='thinking'||d.content==='executing')?showT(d.content==='executing'?'Running tools...':'Thinking...'):0;
-else if(d.type==='response'){hideT();msg('a','kate',d.content)}
+else if(d.type==='response'){const s=$('streaming');if(s)s.removeAttribute('id');hideT();msg('a','kate',d.content)}
 else if(d.type==='error'){hideT();msg('e','error',d.content)}
 else if(d.type==='activity'&&Array.isArray(d.data))d.data.forEach(a=>act(a.type,a.source,a.message));
 };ws.onclose=()=>{$('conn').className='status off';$('cTxt').textContent='Offline';setTimeout(connect,3e3)};ws.onerror=()=>ws.close()}

@@ -423,7 +423,12 @@ export async function startWebServer(port: number = 3201) {
 
         try {
           addActivity({ type: "info", source: "web-user", message: `${parsed.content.slice(0, 100)}` });
+          // Stream tokens to client
+          agent.onToken = (token: string) => {
+            try { ws.send(JSON.stringify({ type: "token", content: token })); } catch {}
+          };
           const response = await agent.handleMessage(msg);
+          agent.onToken = undefined;
           addActivity({ type: "info", source: "agent", message: `Done: ${response.slice(0, 80)}` });
           ws.send(JSON.stringify({
             type: "response",
@@ -455,7 +460,12 @@ export async function startWebServer(port: number = 3201) {
 
         try {
           addActivity({ type: "tool", source: "web-user", message: `Command: ${parsed.content.slice(0, 100)}` });
+          // Stream tokens to client
+          agent.onToken = (token: string) => {
+            try { ws.send(JSON.stringify({ type: "token", content: token })); } catch {}
+          };
           const response = await agent.handleMessage(msg);
+          agent.onToken = undefined;
           addActivity({ type: "tool", source: "agent", message: `Result: ${response.slice(0, 80)}` });
           ws.send(JSON.stringify({ type: "response", content: response, timestamp: Date.now() }));
         } catch (err: any) {

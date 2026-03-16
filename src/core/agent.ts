@@ -115,7 +115,7 @@ export class Agent {
       model: this.model,
       messages,
       tools: tools.length > 0 ? tools : undefined,
-      stream: false,
+      stream: true,
       options: {
         temperature: 0.3,
         num_predict: 4096,
@@ -134,13 +134,32 @@ export class Agent {
       throw new Error(`Ollama error: ${res.status} ${res.statusText}`);
     }
 
-    const data = await res.json() as any;
-    const msg = data.message || {};
-
-    return {
-      content: msg.content || "",
-      toolCalls: msg.tool_calls || [],
-    };
+    // Stream response
+    let content = "";
+    let toolCalls: any[] = [];
+    let buffer = "";
+    
+    for await (const chunk of res.body as any) {
+      buffer += new TextDecoder().decode(chunk);
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const obj = JSON.parse(line);
+          if (obj.message?.content) {
+            content += obj.message.content;
+            if (this.onToken) this.onToken(obj.message.content);
+          }
+          if (obj.message?.tool_calls) {
+            toolCalls = obj.message.tool_calls;
+          }
+        } catch {}
+      }
+    }
+    
+    return { content, toolCalls };
   }
 
   /**
@@ -204,6 +223,8 @@ ENVIRONMENT:
 - MQTT (only when user asks for MQTT): host=172.168.1.8, port=1883, user=mantiz010, pass=DavidCross010
 ET-Bus (only when user asks for ET-Bus): UDP multicast, NO MQTT needed — see ET-BUS API below
 IMPORTANT: MQTT and ET-Bus are DIFFERENT protocols. Use ONE or the OTHER, never both.
+
+WORKERS: When spawning workers, ALWAYS use model "qwen3-coder". No other models are loaded. NEVER use llama3, mistral, or any other model.
 
 USER'S ACTUAL LIBRARIES (use THESE exact includes):
 - ADS1115: #include <Adafruit_ADS1X15.h> // from Adafruit_ADS1X15\n- AHTX0: #include <Adafruit_AHTX0.h> // from Adafruit_AHTX0\n- BME280: #include <SparkFunBME280.h> // from SparkFun_BME280\n- BME680: #include <Zanshin_BME680.h> // from BME680-1.0.10\n- ENS160: #include <SparkFun_ENS160.h> // from SparkFun_Indoor_Air_Quality_Sensor_-_ENS160\n- ETBus: #include <ETBus.h> // from ETBus\n- HTU21D: #include <SparkFunHTU21D.h> // from SparkFun_HTU21D_Humidity_and_Temperature_Sensor_Breakout\n- INA219: #include <Adafruit_INA219.h> // from Adafruit_INA219\n- NeoPixel: #include <NeoPixelSegmentBus.h> // from NeoPixelBus_by_Makuna\n- PubSubClient: #include <ShimClient.h> // from PubSubClient\n- RF24: #include <RF24Network_config.h> // from RF24Network\n- SSD1306: #include <SH1106Spi.h> // from esp8266-oled-ssd1306
