@@ -81,10 +81,10 @@ async function fetchClean(url: string, maxLen = 15000): Promise<string> {
 const websearch: Skill = {
   id: "builtin.websearch",
   name: "Web Search",
-  description: "Search using GitHub repos, Wikipedia, and StackOverflow APIs. Fetch and read any URL.",
+  description: "Search the real web plus GitHub, Wikipedia, and StackOverflow. Fetch and read any URL.",
   version: "3.0.0",
   tools: [
-    { name: "search", description: "Search across GitHub, Wikipedia, and StackOverflow", parameters: [
+    { name: "search", description: "Search the web (DuckDuckGo + GitHub + Wikipedia + StackOverflow)", parameters: [
       { name: "query", type: "string", description: "Search query", required: true },
       { name: "source", type: "string", description: "github, wikipedia, stackoverflow, or all (default: all)", required: false },
       { name: "count", type: "number", description: "Results per source (default: 5)", required: false },
@@ -109,6 +109,20 @@ const websearch: Skill = {
         const source = (args.source as string) || "all";
         const count = (args.count as number) || 5;
         const sections: string[] = [];
+
+        if (source === "all" || source === "web" || source === "ddg") {
+          try {
+            const { stdout } = await execAsync(
+              "python3 /home/mantiz010/kate/scripts/web_search.py " + JSON.stringify(query),
+              { timeout: 30000, maxBuffer: 1024 * 1024 },
+            );
+            const ddg = JSON.parse(stdout);
+            if (ddg.length > 0) {
+              sections.push("--- Web Results ---");
+              sections.push(ddg.slice(0, count).map((r: any, i: number) => (i + 1) + ". " + r.title + "\n   " + r.url + "\n   " + r.snippet).join("\n\n"));
+            }
+          } catch {}
+        }
 
         if (source === "all" || source === "github") {
           const gh = await searchGitHub(query, count);
@@ -139,10 +153,18 @@ const websearch: Skill = {
 
       case "search_and_read": {
         const n = (args.count as number) || 3;
-        const gh = await searchGitHub(args.query as string, n);
-        if (gh.length === 0) return "No results for: " + args.query;
+        let results: SearchResult[] = [];
+        try {
+          const { stdout } = await execAsync(
+            "python3 /home/mantiz010/kate/scripts/web_search.py " + JSON.stringify(args.query as string),
+            { timeout: 30000, maxBuffer: 1024 * 1024 },
+          );
+          results = JSON.parse(stdout).map((r: any) => ({ title: r.title, url: r.url, snippet: r.snippet }));
+        } catch {}
+        if (results.length === 0) results = await searchGitHub(args.query as string, n);
+        if (results.length === 0) return "No results for: " + args.query;
         const out: string[] = [];
-        for (const r of gh.slice(0, n)) {
+        for (const r of results.slice(0, n)) {
           out.push("=== " + r.title + " ===\nURL: " + r.url);
           out.push(await fetchClean(r.url, 4000));
         }
