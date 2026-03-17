@@ -15,6 +15,69 @@ function ensureDir(dir: string) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
+
+// Before compile: read actual header files, learn real class names, fix code
+function preCompileFix(dir: string) {
+  const inoFiles = fs.readdirSync(dir).filter(f => f.endsWith(".ino"));
+  for (const file of inoFiles) {
+    const fp = path.join(dir, file);
+    let code = fs.readFileSync(fp, "utf-8");
+    let fixed = false;
+
+    // Find all #include <X.h> and read the actual headers
+    const includes = [...code.matchAll(/#include\s*<([^>]+\.h)>/g)].map(m => m[1]);
+
+    for (const hName of includes) {
+      // Find header in user libraries
+      let hPath = "";
+      try {
+        const { execSync } = require("child_process");
+        hPath = execSync("find " + JSON.stringify(USER_LIBS) + " -name " + JSON.stringify(hName) + " -type f 2>/dev/null | head -1", { encoding: "utf-8", timeout: 5000 }).trim();
+      } catch {}
+      if (!hPath) continue;
+
+      let header = "";
+      try { header = fs.readFileSync(hPath, "utf-8"); } catch { continue; }
+
+      // Learn real class names from "class ClassName"
+      const classes = [...header.matchAll(/^\s*class\s+(\w+)/gm)].map(m => m[1]);
+
+      // Learn which begin() returns void
+      for (const cls of classes) {
+        const beginMatch = header.match(new RegExp("void\\s+begin\\s*\\("));
+        const isVoidBegin = !!beginMatch;
+
+        // Fix wrong class names: if code uses "SparkFun"+ClassName but header has just ClassName
+        const wrong = "SparkFun" + cls;
+        if (code.includes(wrong) && wrong !== cls) {
+          code = code.split(wrong).join(cls);
+          fixed = true;
+        }
+
+        if (isVoidBegin) {
+          // Find variables of this class
+          const varMatches = [...code.matchAll(new RegExp(cls + "\\s+(\\w+)\\s*[;(=]", "g"))].map(m => m[1]);
+          for (const v of varMatches) {
+            // Fix: if (!var.begin()) or if (var.begin() == false)
+            const patterns = [
+              new RegExp("if\\s*\\(\\s*!" + v + "\\.begin\\(\\)\\s*\\)", "g"),
+              new RegExp("if\\s*\\(" + v + "\\.begin\\(\\)\\s*==\\s*false\\s*\\)", "g"),
+            ];
+            for (const pat of patterns) {
+              if (pat.test(code)) {
+                code = code.replace(pat, v + ".begin(); if (false)");
+                fixed = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (fixed) fs.writeFileSync(fp, code);
+  }
+}
+
 // ── Boards ─────────────────────────────────────────────────
 const BOARDS: Record<string, { name: string; fqbn: string; wifi: string; pins: Record<string, string> }> = {
   "esp8266":     { name: "ESP8266 D1 Mini",   fqbn: "esp8266:esp8266:d1_mini",          wifi: "ESP8266WiFi.h", pins: { SDA: "4", SCL: "5", LED: "2", A0: "A0" } },

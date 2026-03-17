@@ -284,12 +284,12 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
     // Load memory context
     let memoryContext = "";
     try {
-      const memories = await this.memory.recall(msg.content, 5);
+      const memories = await this.memory.search(msg.content, 5);
       if (memories?.length) {
         memoryContext = memories.map((m: any) => `${m.key}: ${m.value}`).join("\n");
       }
       // Always load user profile
-      const profile = await this.memory.recall("user profile network arduino", 3);
+      const profile = await this.memory.search("user profile network arduino", 3);
       if (profile?.length) {
         memoryContext += "\n" + profile.map((m: any) => `${m.key}: ${m.value}`).join("\n");
       }
@@ -374,6 +374,14 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
         log("  " + (success ? "✓" : "✗"), fnName, `${elapsed}ms — ${result.slice(0, 80)}`, success ? "32" : "31");
 
         toolResults.push(result);
+        // auto-remember compile outcomes
+        if (fnName.includes("compile") && result.includes("error:")) {
+          const err = result.split("\n").find((l: string) => l.includes("error:")) || result.slice(0, 150);
+          try { await this.executeTool("remember", { key: "err_" + Date.now(), value: err.slice(0, 200), category: "fact", importance: 0.9 }, userId, "auto"); } catch {}
+        }
+        if (fnName.includes("compile") && result.includes("Compiled:")) {
+          try { await this.executeTool("remember", { key: "ok_" + Date.now(), value: result.split("\n")[0].slice(0, 200), category: "fact", importance: 0.5 }, userId, "auto"); } catch {}
+        }
 
         // Add tool result back to messages
         messages.push({

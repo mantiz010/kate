@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Homelab Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            margin-top: 0;
+            color: #667eea;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-online {
+            background-color: #4CAF50;
+        }
+        .status-offline {
+            background-color: #f44336;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+        .refresh-info {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 0.9em;
+        }
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .data-row:last-child {
+            border-bottom: none;
+        }
+        .data-label {
+            font-weight: bold;
+        }
+        .data-value {
+            text-align: right;
+        }
+        .gpu-card {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fad0c4 100%);
+        }
+        .vm-card {
+            background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+        }
+        .network-card {
+            background: linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%);
+        }
+        .kate-card {
+            background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
+        }
+        .sensor-card {
+            background: linear-gradient(135deg, #a6c1ee 0%, #f68084 100%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Homelab Dashboard</h1>
+            <p>Real-time monitoring of all systems</p>
+        </header>
+
+        <div class="dashboard-grid">
+            <!-- Kate Status Card -->
+            <div class="card kate-card">
+                <h2>Kate Status</h2>
+                <div id="kate-status">
+                    <div class="data-row">
+                        <span class="data-label">Status:</span>
+                        <span class="data-value" id="kate-status-value">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Uptime:</span>
+                        <span class="data-value" id="kate-uptime">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Memory:</span>
+                        <span class="data-value" id="kate-memory">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">CPU:</span>
+                        <span class="data-value" id="kate-cpu">Loading...</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="kate-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Proxmox VMs Card -->
+            <div class="card vm-card">
+                <h2>Proxmox VMs</h2>
+                <div id="vm-status">
+                    <div class="data-row">
+                        <span class="data-label">Total VMs:</span>
+                        <span class="data-value" id="vm-total">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Running:</span>
+                        <span class="data-value" id="vm-running">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Stopped:</span>
+                        <span class="data-value" id="vm-stopped">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">CPU Usage:</span>
+                        <span class="data-value" id="vm-cpu">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Memory:</span>
+                        <span class="data-value" id="vm-memory">Loading...</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="vm-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Ollama GPU Card -->
+            <div class="card gpu-card">
+                <h2>Ollama GPU Status</h2>
+                <div id="gpu-status">
+                    <div class="data-row">
+                        <span class="data-label">Status:</span>
+                        <span class="data-value" id="gpu-status-value">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">GPU Memory:</span>
+                        <span class="data-value" id="gpu-memory">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">GPU Usage:</span>
+                        <span class="data-value" id="gpu-usage">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Temperature:</span>
+                        <span class="data-value" id="gpu-temp">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Power:</span>
+                        <span class="data-value" id="gpu-power">Loading...</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="gpu-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Home Assistant Sensors Card -->
+            <div class="card sensor-card">
+                <h2>Home Assistant Sensors</h2>
+                <div id="sensor-status">
+                    <div class="data-row">
+                        <span class="data-label">Total Sensors:</span>
+                        <span class="data-value" id="sensor-total">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Online:</span>
+                        <span class="data-value" id="sensor-online">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Offline:</span>
+                        <span class="data-value" id="sensor-offline">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Last Update:</span>
+                        <span class="data-value" id="sensor-last-update">Loading...</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="sensor-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Network Scan Card -->
+            <div class="card network-card">
+                <h2>Network Scan Results</h2>
+                <div id="network-status">
+                    <div class="data-row">
+                        <span class="data-label">Active Devices:</span>
+                        <span class="data-value" id="network-active">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Ports Scanned:</span>
+                        <span class="data-value" id="network-ports">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Open Ports:</span>
+                        <span class="data-value" id="network-open">Loading...</span>
+                    </div>
+                    <div class="data-row">
+                        <span class="data-label">Scanned IPs:</span>
+                        <span class="data-value" id="network-scanned">Loading...</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="network-chart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="refresh-info">
+            <p>Last updated: <span id="last-update">Loading...</span> | Auto-refreshing every 30 seconds</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize charts
+        const kateChart = new Chart(document.getElementById('kate-chart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage (%)',
+                    data: [],
+                    borderColor: 'rgb(102, 126, 234)',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Memory Usage (%)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        const vmChart = new Chart(document.getElementById('vm-chart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage (%)',
+                    data: [],
+                    borderColor: 'rgb(102, 126, 234)',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Memory Usage (%)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+
+        const gpuChart = new Chart(document.getElementById('gpu-chart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'GPU Usage (%)',
+                    data: [],
+                    borderColor: 'rgb(102, 126, 234)',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const sensorChart = new Chart(document.getElementById('sensor-chart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Online Sensors',
+                    data: [],
+                    borderColor: 'rgb(102, 126, 234)',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Offline Sensors',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        const networkChart = new Chart(document.getElementById('network-chart'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Active Devices',
+                    data: [],
+                    borderColor: 'rgb(102, 126, 234)',
+                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                    tension: 0.4
+                }, {
+                    label: 'Open Ports',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+
+        // Update data function
+        async function updateData() {
+            try {
+                const response = await fetch('/api/dashboard');
+                const data = await response.json();
+                
+                // Update Kate status
+                document.getElementById('kate-status-value').textContent = data.kate.status;
+                document.getElementById('kate-uptime').textContent = data.kate.uptime;
+                document.getElementById('kate-memory').textContent = data.kate.memory;
+                document.getElementById('kate-cpu').textContent = data.kate.cpu;
+                
+                // Update VM status
+                document.getElementById('vm-total').textContent = data.proxmox.total;
+                document.getElementById('vm-running').textContent = data.proxmox.running;
+                document.getElementById('vm-stopped').textContent = data.proxmox.stopped;
+                document.getElementById('vm-cpu').textContent = data.proxmox.cpu;
+                document.getElementById('vm-memory').textContent = data.proxmox.memory;
+                
+                // Update GPU status
+                document.getElementById('gpu-status-value').textContent = data.ollama.status;
+                document.getElementById('gpu-memory').textContent = data.ollama.memory;
+                document.getElementById('gpu-usage').textContent = data.ollama.usage;
+                document.getElementById('gpu-temp').textContent = data.ollama.temp;
+                document.getElementById('gpu-power').textContent = data.ollama.power;
+                
+                // Update Home Assistant sensors
+                document.getElementById('sensor-total').textContent = data.homeassistant.total;
+                document.getElementById('sensor-online').textContent = data.homeassistant.online;
+                document.getElementById('sensor-offline').textContent = data.homeassistant.offline;
+                document.getElementById('sensor-last-update').textContent = data.homeassistant.last_update;
+                
+                // Update Network scan
+                document.getElementById('network-active').textContent = data.network.active;
+                document.getElementById('network-ports').textContent = data.network.ports;
+                document.getElementById('network-open').textContent = data.network.open;
+                document.getElementById('network-scanned').textContent = data.network.scanned;
+                
+                // Update last update time
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+                
+                // Update charts with historical data
+                if (data.history) {
+                    // Kate chart
+                    kateChart.data.labels = data.history.kate.labels;
+                    kateChart.data.datasets[0].data = data.history.kate.cpu;
+                    kateChart.data.datasets[1].data = data.history.kate.memory;
+                    kateChart.update();
+                    
+                    // VM chart
+                    vmChart.data.labels = data.history.vm.labels;
+                    vmChart.data.datasets[0].data = data.history.vm.cpu;
+                    vmChart.data.datasets[1].data = data.history.vm.memory;
+                    vmChart.update();
+                    
+                    // GPU chart
+                    gpuChart.data.labels = data.history.gpu.labels;
+                    gpuChart.data.datasets[0].data = data.history.gpu.usage;
+                    gpuChart.data.datasets[1].data = data.history.gpu.temp;
+                    gpuChart.update();
+                    
+                    // Sensor chart
+                    sensorChart.data.labels = data.history.sensors.labels;
+                    sensorChart.data.datasets[0].data = data.history.sensors.online;
+                    sensorChart.data.datasets[1].data = data.history.sensors.offline;
+                    sensorChart.update();
+                    
+                    // Network chart
+                    networkChart.data.labels = data.history.network.labels;
+                    networkChart.data.datasets[0].data = data.history.network.active;
+                    networkChart.data.datasets[1].data = data.history.network.open;
+                    networkChart.update();
+                }
+            } catch (error) {
+                console.error('Error updating data:', error);
+            }
+        }
+
+        // Initial update
+        updateData();
+        
+        // Set up auto-refresh
+        setInterval(updateData, 30000);
+    </script>
+</body>
+</html>
