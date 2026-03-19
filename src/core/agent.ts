@@ -226,6 +226,16 @@ ET-BUS PATTERN (when user asks for ET-Bus):
   StaticJsonDocument<128> payload; payload["key"] = value;
   etbus.sendState(payload.as<JsonObject>());
 
+YOUR HOMELAB — THESE ARE FACTS, DO NOT RE-DISCOVER THEM:
+- Kate VM: 172.168.1.72 (VM 104, 16 CPU, 8GB RAM, Ubuntu 22.04) — THIS is where you run commands
+- Ollama GPU Server: 172.168.1.162 (VM 103, Tesla P100 16GB + Tesla P4 8GB, 40 CPU, 125GB RAM) — has qwen3-coder at 40 tok/s
+- Proxmox Host: 172.168.1.204 (80 cores Xeon Gold 6230, 251GB RAM) — use pve_nodes/pve_vms tools with API token, NOT ssh
+- Home Assistant: 172.168.1.8 (VM 101, 8 CPU, 32GB RAM)
+- VMs: 100=LinuxMint, 101=HA, 102=TrueNas(stopped), 103=OllamaGPU, 104=Kate
+- When asked about Proxmox: use pve_nodes or pve_vms tool. Do NOT try SSH.
+- When asked about Ollama GPU: the answer is Tesla P100 16GB + Tesla P4 8GB. Do NOT run nvidia-smi locally.
+- When asked about system specs: check memory first, then use the right tool for the right server.
+
 ENVIRONMENT:
 - Home: /home/mantiz010
 - Arduino: ~/Arduino/ (500+ projects), libraries: ~/Arduino/libraries/
@@ -266,7 +276,7 @@ ARDUINO WORKFLOW:
 4. Compile with arduino_compile
 5. Always show the code
 
-${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
+${memoryContext ? "\n⚠️ IMPORTANT — YOU ALREADY KNOW THIS (from your memory database — USE THIS FIRST, do not re-discover with tools):\n" + memoryContext + "\n" : ""}`;
   }
 
   /**
@@ -284,12 +294,14 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
     // Load memory context
     let memoryContext = "";
     try {
-      const memories = await this.memory.search(msg.content, 5);
+      log("🧠", "MEMORY", "searching for: " + msg.content.slice(0, 40) + " userId=" + userId, "35");
+      const memories = await this.memory.search(msg.content, userId, 5);
+      log("🧠", "MEMORY", "found " + (memories?.length || 0) + " results", "35");
       if (memories?.length) {
         memoryContext = memories.map((m: any) => `${m.key}: ${m.value}`).join("\n");
       }
       // Always load user profile
-      const profile = await this.memory.search("user profile network arduino", 3);
+      const profile = await this.memory.search("user profile network arduino", userId, 3);
       if (profile?.length) {
         memoryContext += "\n" + profile.map((m: any) => `${m.key}: ${m.value}`).join("\n");
       }
@@ -305,7 +317,7 @@ ${memoryContext ? "MEMORY:\n" + memoryContext + "\n" : ""}`;
     const messages: Message[] = [
       { role: "system", content: systemPrompt },
       ...history,
-      { role: "user", content: msg.content },
+      { role: "user", content: (memoryContext ? "Context from my memory (use this):\n" + memoryContext + "\n\nUser question: " : "") + msg.content },
     ];
 
     // Get all tools and filter

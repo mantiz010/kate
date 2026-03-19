@@ -91,10 +91,11 @@ export class SQLiteMemory implements MemoryStore {
     if (!this.db) return [];
 
     // Simple keyword search (good enough for v1, can upgrade to vector later)
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const stopWords = new Set(["what","does","my","the","a","an","is","are","do","how","which","where","when","who","have","has","can","will","about","your","this","that","with","for","and","or","in","on","to","of","it","i","me","we","you"]);
+    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1 && !stopWords.has(t));
     if (terms.length === 0) return [];
 
-    const conditions = terms.map(() => "(LOWER(key) LIKE ? OR LOWER(value) LIKE ?)").join(" AND ");
+    const conditions = terms.map(() => "(LOWER(key) LIKE ? OR LOWER(value) LIKE ?)").join(" OR ");
     const params: string[] = [];
     for (const term of terms) {
       params.push(`%${term}%`, `%${term}%`);
