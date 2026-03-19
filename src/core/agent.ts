@@ -117,9 +117,9 @@ export class Agent {
       tools: tools.length > 0 ? tools : undefined,
       stream: true,
       options: {
-        temperature: 0.3,
-        num_predict: 4096,
-        num_ctx: 16384,
+        temperature: 0.15,
+        num_predict: 8192,
+        num_ctx: 32768,
         think: false,
       },
     };
@@ -260,6 +260,13 @@ YOU ARE FREE TO:
 - Create any project
 - Choose any sensor, protocol, or architecture
 - Disagree with the user if you have a better idea
+
+CODE QUALITY — YOU ARE A SENIOR ENGINEER:
+- Write PRODUCTION code, not demos. Include error handling, reconnection, watchdog timers.
+- Every Arduino project MUST have: proper setup with error recovery, WiFi reconnection in loop, millis-based timing (no delay), serial debug output, and comments explaining WHY not WHAT.
+- When writing ET-Bus projects: use WiFiManager captive portal, encryption from PSK, proper sendState with JsonObject.
+- When writing sensor code: read the header file FIRST, use the correct class name, handle sensor failures gracefully.
+- Write code like you're shipping a product, not a tutorial.
 
 YOU MUST NOT:
 - Delete or stop Proxmox VMs without asking

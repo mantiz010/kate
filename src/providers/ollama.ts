@@ -245,7 +245,7 @@ export class OllamaProvider implements Provider {
       model: this.model,
       messages: msgs,
       stream: true,
-      options: { temperature: opts.temperature || 0.7, num_predict: 2048, num_ctx: 6144 },
+      options: { temperature: opts.temperature || 0.7, num_predict: 8192, num_ctx: 32768 },
     };
     if (opts.systemPrompt) {
       body.messages = [{ role: "system", content: opts.systemPrompt }, ...msgs];
