@@ -16,7 +16,7 @@ const shell: Skill = {
       parameters: [
         { name: "command", type: "string", description: "The shell command to execute", required: true },
         { name: "cwd", type: "string", description: "Working directory for the command", required: false },
-        { name: "timeout", type: "number", description: "Timeout in milliseconds (default: 30000)", required: false },
+        { name: "timeout", type: "number", description: "Timeout in milliseconds (default: 300000)", required: false },
       ],
     },
     {
@@ -25,7 +25,7 @@ const shell: Skill = {
       parameters: [
         { name: "script", type: "string", description: "The script content to execute", required: true },
         { name: "interpreter", type: "string", description: "Script interpreter (default: /bin/bash)", required: false },
-        { name: "timeout", type: "number", description: "Timeout in milliseconds (default: 60000)", required: false },
+        { name: "timeout", type: "number", description: "Timeout in milliseconds (default: 300000)", required: false },
       ],
     },
   ],
@@ -35,7 +35,7 @@ const shell: Skill = {
       case "run_command": {
         const command = args.command as string;
         const cwd = (args.cwd as string) || process.cwd();
-        const timeout = (args.timeout as number) || 30000;
+        const timeout = (args.timeout as number) || 300000;
 
         ctx.log.info(`Executing: ${command}`);
         try {
@@ -50,7 +50,7 @@ const shell: Skill = {
       case "run_script": {
         const script = args.script as string;
         const interpreter = (args.interpreter as string) || "/bin/bash";
-        const timeout = (args.timeout as number) || 60000;
+        const timeout = (args.timeout as number) || 300000;
 
         ctx.log.info(`Running script with ${interpreter}`);
         try {
