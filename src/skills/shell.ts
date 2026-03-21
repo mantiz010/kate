@@ -39,7 +39,7 @@ const shell: Skill = {
 
         ctx.log.info(`Executing: ${command}`);
         try {
-          const { stdout, stderr } = await execAsync(command, { cwd, timeout, maxBuffer: 1024 * 1024 * 10 });
+          const { stdout, stderr } = await execAsync(command, { shell: "/bin/bash", cwd, timeout, maxBuffer: 1024 * 1024 * 10 });
           const output = stdout || stderr || "(no output)";
           return output.slice(0, 10000); // Cap output
         } catch (err: any) {

@@ -9,7 +9,7 @@ import { MemoryStore } from "../memory/store.js";
 import { loadConfig } from "./config.js";
 import { saveMessage } from "./chathistory.js";
 
-const MAX_ROUNDS = 50;
+const MAX_ROUNDS = 100;
 const OLLAMA_URL = "http://172.168.1.162:11434";
 
 interface Message {
