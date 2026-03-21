@@ -88,6 +88,8 @@ const BOARDS: Record<string, { name: string; fqbn: string; wifi: string; pins: R
   "esp32s3":     { name: "ESP32-S3 DevKit",   fqbn: "esp32:esp32:esp32s3",              wifi: "WiFi.h",        pins: { SDA: "8", SCL: "9", LED: "48" } },
   "esp32c3":     { name: "ESP32-C3 Mini",     fqbn: "esp32:esp32:esp32c3",              wifi: "WiFi.h",        pins: { SDA: "8", SCL: "9", LED: "8" } },
   "esp32c6":     { name: "ESP32-C6",          fqbn: "esp32:esp32:esp32c6",              wifi: "WiFi.h",        pins: { SDA: "6", SCL: "7", LED: "8" } },
+  "esp32c6-zigbee":  { name: "ESP32-C6 Zigbee ED",  fqbn: "esp32:esp32:esp32c6:ZigbeeMode=ed",   wifi: "WiFi.h", pins: { SDA: "6", SCL: "7", LED: "8" } },
+  "esp32c6-zczr":    { name: "ESP32-C6 Zigbee CR",  fqbn: "esp32:esp32:esp32c6:ZigbeeMode=zczr", wifi: "WiFi.h", pins: { SDA: "6", SCL: "7", LED: "8" } },
   "esp32h2":     { name: "ESP32-H2",          fqbn: "esp32:esp32:esp32h2",              wifi: "",              pins: { SDA: "1", SCL: "0", LED: "8" } },
   "atmega1284p": { name: "ATmega1284P",       fqbn: "MightyCore:avr:1284",              wifi: "",              pins: { SDA: "17", SCL: "16", LED: "13" } },
   "samd21":      { name: "SAMD21 Zero",       fqbn: "arduino:samd:arduino_zero_native",  wifi: "",             pins: { SDA: "20", SCL: "21", LED: "13" } },
@@ -97,6 +99,8 @@ function resolveBoard(input: string): string {
   const low = input.toLowerCase().replace(/[_\-\s]/g, "");
   if (BOARDS[low]) return low;
   if (low.includes("8266") || low.includes("d1mini") || low.includes("wemos")) return "esp8266";
+  if (low.includes("c6") && low.includes("zigbee")) return "esp32c6-zigbee";
+  if (low.includes("c6") && low.includes("zczr")) return "esp32c6-zczr";
   if (low.includes("c6")) return "esp32c6";
   if (low.includes("h2")) return "esp32h2";
   if (low.includes("c3")) return "esp32c3";
