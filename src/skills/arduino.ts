@@ -78,6 +78,143 @@ function preCompileFix(dir: string) {
   }
 }
 
+
+// === AUTO-RESEARCH: Read headers before compile to learn real API ===
+function autoResearchHeaders(projDir: string): string {
+  const USER_LIBS = path.join(os.homedir(), "Arduino/libraries");
+  const CORE_LIBS = path.join(os.homedir(), ".arduino15/packages/esp32/hardware/esp32");
+  const facts: string[] = [];
+  
+  // Find .ino files and extract #include lines
+  const inoFiles = fs.readdirSync(projDir).filter((f: string) => f.endsWith(".ino"));
+  const allIncludes: string[] = [];
+  for (const file of inoFiles) {
+    const code = fs.readFileSync(path.join(projDir, file), "utf-8");
+    const incs = [...code.matchAll(/#include\s*[<"]([^>"]+\.h)[>"]/g)].map(m => m[1]);
+    allIncludes.push(...incs);
+  }
+  
+  const unique = [...new Set(allIncludes)];
+  
+  for (const hName of unique) {
+    // Skip standard headers
+    if (["Arduino.h", "Wire.h", "SPI.h", "WiFi.h", "string.h", "stdio.h", "stdlib.h"].includes(hName)) continue;
+    
+    // Find header in user libs then core libs
+    let hPath = "";
+    try {
+      const { execSync } = require("child_process");
+      hPath = execSync(
+        `find "${USER_LIBS}" -name "${hName}" -type f 2>/dev/null | head -1`,
+        { encoding: "utf-8", timeout: 3000 }
+      ).trim();
+      if (!hPath) {
+        // Search core libs (all versions)
+        hPath = execSync(
+          `find "${CORE_LIBS}" -name "${hName}" -type f 2>/dev/null | head -1`,
+          { encoding: "utf-8", timeout: 3000 }
+        ).trim();
+      }
+    } catch {}
+    if (!hPath) continue;
+    
+    let header = "";
+    try { header = fs.readFileSync(hPath, "utf-8"); } catch { continue; }
+    
+    // Extract class names
+    const classes = [...header.matchAll(/^\s*class\s+(\w+)/gm)].map(m => m[1]);
+    
+    // Extract public methods (simplified)
+    const methods: string[] = [];
+    for (const cls of classes) {
+      // Find void begin or bool begin
+      const beginMatch = header.match(/(void|bool|int)\s+begin\s*\(/);
+      if (beginMatch) methods.push(`${cls}.begin() returns ${beginMatch[1]}`);
+      
+      // Find set* methods
+      const setters = [...header.matchAll(/(void|bool)\s+(set\w+)\s*\(/g)].map(m => `${m[2]}()`);
+      methods.push(...setters.slice(0, 5));
+    }
+    
+    if (classes.length > 0) {
+      facts.push(`[${hName}] classes: ${classes.join(", ")}${methods.length ? " | " + methods.join(", ") : ""}`);
+    }
+  }
+  
+  return facts.length > 0 ? "\n--- LIBRARY API (from actual headers) ---\n" + facts.join("\n") + "\n---" : "";
+}
+
+
+// === SURGICAL FIX: Parse compile errors, return targeted fix instructions ===
+function parseSurgicalFix(compileOutput: string, projDir: string): string {
+  const errors: {file: string, line: number, msg: string, code: string}[] = [];
+  
+  // Parse gcc error format: file.ino:LINE:COL: error: message
+  const errorLines = compileOutput.split("\n").filter((l: string) => l.includes("error:"));
+  
+  for (const errLine of errorLines.slice(0, 3)) { // Max 3 errors
+    const match = errLine.match(/([^:]+\.(ino|c|cpp|h)):(\d+):\d+:\s*error:\s*(.+)/);
+    if (!match) continue;
+    
+    const [, file, , lineStr, msg] = match;
+    const lineNum = parseInt(lineStr);
+    
+    // Read the actual source line
+    let codeLine = "";
+    try {
+      const basename = path.basename(file);
+      const fullPath = path.join(projDir, basename);
+      if (fs.existsSync(fullPath)) {
+        const lines = fs.readFileSync(fullPath, "utf-8").split("\n");
+        if (lineNum > 0 && lineNum <= lines.length) {
+          codeLine = lines[lineNum - 1].trim();
+        }
+      }
+    } catch {}
+    
+    errors.push({ file: path.basename(file), line: lineNum, msg: msg.trim(), code: codeLine });
+  }
+  
+  if (errors.length === 0) return "";
+  
+  // Build surgical fix instructions
+  let fix = "\n--- SURGICAL FIX NEEDED (do NOT rewrite entire file) ---\n";
+  
+  for (const err of errors) {
+    fix += `ERROR at ${err.file}:${err.line}: ${err.msg}\n`;
+    if (err.code) fix += `  CODE: ${err.code}\n`;
+    
+    // Auto-detect common fixes
+    if (err.msg.includes("No such file or directory") && err.code.includes("Zigbee")) {
+      fix += `  FIX: Replace individual Zigbee header with #include "Zigbee.h" (single header includes all classes)\n`;
+    }
+    if (err.msg.includes("does not name a type")) {
+      const typeMatch = err.msg.match(/'(\w+)'/);
+      if (typeMatch) {
+        fix += `  FIX: Class '${typeMatch[1]}' not found. Check correct class name by reading the actual header file.\n`;
+      }
+    }
+    if (err.msg.includes("has no member named")) {
+      const memberMatch = err.msg.match(/named '(\w+)'/);
+      if (memberMatch) {
+        fix += `  FIX: Method '${memberMatch[1]}' does not exist. Read the header to find the correct method name. Do NOT guess.\n`;
+      }
+    }
+    if (err.msg.includes("void value not ignored")) {
+      fix += `  FIX: Function returns void but code checks its return. Remove the if() check and just call the function directly.\n`;
+    }
+    if (err.msg.includes("not selected in Tools")) {
+      fix += `  FIX: Wrong board. Use board esp32c6-zigbee for Zigbee end devices (adds ZigbeeMode=ed to fqbn).\n`;
+    }
+    
+    fix += "\n";
+  }
+  
+  fix += "INSTRUCTIONS: Fix ONLY the lines above. Do NOT rewrite the entire file. Use write_file to replace just the broken lines.\n---";
+  
+  return fix;
+}
+
 // ── Boards ─────────────────────────────────────────────────
 const BOARDS: Record<string, { name: string; fqbn: string; wifi: string; pins: Record<string, string> }> = {
   "esp8266":     { name: "ESP8266 D1 Mini",   fqbn: "esp8266:esp8266:d1_mini",          wifi: "ESP8266WiFi.h", pins: { SDA: "4", SCL: "5", LED: "2", A0: "A0" } },
@@ -399,6 +536,7 @@ void loop() {
         if (args.board) { const brd = BOARDS[resolveBoard(args.board as string)]; if (brd) fqbn = brd.fqbn; }
         if (!fqbn) fqbn = "esp32:esp32:esp32";
 
+        const headerInfo = autoResearchHeaders(projDir);
         try {
           const { stdout, stderr } = await execAsync(
             `arduino-cli compile --fqbn "${fqbn}" --libraries "${USER_LIBS}" "${projDir}" 2>&1`,
@@ -410,7 +548,8 @@ void loop() {
         } catch (err: any) {
           const errClean = ((err.stdout || "") + "\n" + (err.stderr || "")).replace(/\x1b\[[0-9;]*m/g, "");
           const errLines = errClean.split("\n").filter((l: string) => l.includes("error:") || l.includes("Error during"));
-          return "❌ Compile failed:\n" + errLines.join("\n");
+          const surgicalFix = parseSurgicalFix(((err.stdout || "") + "\n" + (err.stderr || "")), projDir);
+          return "❌ Compile failed:\n" + errLines.join("\n") + (surgicalFix || "") + (headerInfo || "");
         }
       }
 

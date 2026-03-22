@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 
 const log = createLogger("evolution");
-const EVOLVE_DIR = path.join(os.homedir(), ".aegis", "evolution");
+const EVOLVE_DIR = path.join(os.homedir(), ".kate", "evolution");
 const EVOLVE_LOG = path.join(EVOLVE_DIR, "history.json");
 
 interface ErrorPattern {
@@ -54,7 +54,7 @@ const AUTO_FIXES: Array<{
     match: /tools is not iterable/,
     category: "skill_format",
     fix: async () => {
-      const skillsDir = path.join(os.homedir(), ".aegis", "skills");
+      const skillsDir = path.join(os.homedir(), ".kate", "skills");
       if (!fs.existsSync(skillsDir)) return "No skills dir";
       let fixed = 0;
       for (const dir of fs.readdirSync(skillsDir, { withFileTypes: true })) {
@@ -81,7 +81,7 @@ const AUTO_FIXES: Array<{
     match: /module\.exports/,
     category: "commonjs_skill",
     fix: async () => {
-      const skillsDir = path.join(os.homedir(), ".aegis", "skills");
+      const skillsDir = path.join(os.homedir(), ".kate", "skills");
       if (!fs.existsSync(skillsDir)) return "No skills";
       let fixed = 0;
       for (const dir of fs.readdirSync(skillsDir, { withFileTypes: true })) {
@@ -237,7 +237,7 @@ export class EvolutionEngine {
     }
 
     // Check skills health
-    const skillsDir = path.join(os.homedir(), ".aegis", "skills");
+    const skillsDir = path.join(os.homedir(), ".kate", "skills");
     if (fs.existsSync(skillsDir)) {
       const dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter(d => d.isDirectory() && !d.name.startsWith("."));
       let broken = 0;

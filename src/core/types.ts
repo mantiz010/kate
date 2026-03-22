@@ -178,11 +178,11 @@ export const KateConfigSchema = z.object({
   }).default({}),
   memory: z.object({
     enabled: z.boolean().default(true),
-    dbPath: z.string().default("~/.aegis/memory.db"),
+    dbPath: z.string().default("~/.kate/memory.db"),
     maxEntries: z.number().default(10000),
   }).default({}),
   skills: z.object({
-    directory: z.string().default("~/.aegis/skills"),
+    directory: z.string().default("~/.kate/skills"),
     builtin: z.array(z.string()).default(["shell", "files", "web", "memory", "browser", "scheduler", "pcb", "arduino", "workers", "skillforge", "router", "git", "codeanalysis", "packages", "monitoring", "apibuilder", "cicd", "autohealer", "agentcomm", "websearch", "github", "docs", "downloads", "apitester", "docker", "ssh", "database", "network", "backup", "mqtt", "services", "codegen", "installer", "events"]),
   }).default({}),
   logging: z.object({

@@ -236,6 +236,17 @@ YOUR HOMELAB — THESE ARE FACTS, DO NOT RE-DISCOVER THEM:
 - When asked about Ollama GPU: the answer is Tesla P100 16GB + Tesla P4 8GB. Do NOT run nvidia-smi locally.
 - When asked about system specs: check memory first, then use the right tool for the right server.
 
+ZIGBEE RULES — CRITICAL:
+- ESP32-C6 has native Zigbee. Arduino core 3.1.1 at ~/.arduino15/packages/esp32/hardware/esp32/3.1.1/
+- ONLY use #include "Zigbee.h" — this single header includes ALL classes. NEVER include individual headers.
+- Available classes: ZigbeeTempSensor, ZigbeeCarbonDioxideSensor, ZigbeePressureSensor, ZigbeeLight, ZigbeeGateway
+- For Zigbee projects: ALWAYS use arduino_compile tool with board="esp32c6-zigbee" — NEVER use run_command for compiling.
+- The fqbn esp32:esp32:esp32c6:ZigbeeMode=ed is set AUTOMATICALLY when you use board="esp32c6-zigbee".
+- NEVER compile Zigbee with plain esp32c6 board — it will fail with linker errors.
+- NEVER fall back to WiFi/MQTT when Zigbee compile fails. Fix the error instead.
+- Zigbee library is at ~/.arduino15/packages/esp32/hardware/esp32/3.1.1/libraries/Zigbee/ NOT in ~/Arduino/libraries/
+- Home dir is /home/mantiz010 NOT /root/
+
 ENVIRONMENT:
 - Home: /home/mantiz010
 - Arduino: ~/Arduino/ (500+ projects), libraries: ~/Arduino/libraries/
@@ -245,6 +256,11 @@ ENVIRONMENT:
 - WiFi: SSID=mantiz010, PASS=DavidCross010
 - MQTT: host=172.168.1.8, port=1883, user=mantiz010, pass=DavidCross010
 - Workers: ALWAYS use model "qwen3-coder".
+
+OUTPUT RULES:
+- ALWAYS show the full code after writing it. Do not just say "written" — show the actual code.
+- After a successful compile, show the compiled code and the compile stats.
+- Keep explanations SHORT. The code IS the deliverable.
 
 DECISION MAKING:
 - Research max 3-4 rounds. Then DECIDE and BUILD.
