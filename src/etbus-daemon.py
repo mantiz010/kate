@@ -79,10 +79,25 @@ def decrypt(wrapper):
 
 
 # ── State ───────────────────────────────────────────────────
+
+import urllib.request, json as _json
+
+def get_kate_stats():
+    """Query Kate's live API for real skill/tool counts"""
+    try:
+        with urllib.request.urlopen("http://localhost:3201/api/tools", timeout=3) as r:
+            tools = len(_json.loads(r.read()))
+    except: tools = 0
+    try:
+        with urllib.request.urlopen("http://localhost:3201/api/skills", timeout=3) as r:
+            skills = len(_json.loads(r.read()))
+    except: skills = 0
+    return skills, tools
+
 state = {
     "status": "online",
-    "skills": 37,
-    "tools": 321,
+    "skills": 0,
+    "tools": 0,
     "last_command": "",
     "last_response": "",
     "uptime": 0,

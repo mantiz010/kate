@@ -5,7 +5,7 @@
  */
 
 import { SkillManager } from "../skills/manager.js";
-import { MemoryStore } from "../memory/store.js";
+import { InMemoryStore } from "../memory/store.js";
 import { loadConfig } from "./config.js";
 import { saveMessage } from "./chathistory.js";
 
@@ -33,14 +33,14 @@ function log(icon: string, label: string, msg: string, color = "0") {
 
 export class Agent {
   skills: SkillManager;
-  memory: MemoryStore;
+  memory: InMemoryStore;
   config: any;
   model: string;
   onToken?: (token: string) => void;
 
   private sessions: Map<string, Message[]> = new Map();
 
-  constructor(config: any, providers: any, skills: SkillManager, memory: MemoryStore) {
+  constructor(config: any, providers: any, skills: SkillManager, memory: InMemoryStore | any) {
     this.skills = skills;
     this.memory = memory;
     this.config = config;
@@ -76,34 +76,26 @@ export class Agent {
    */
   private filterTools(message: string, allTools: any[]): any[] {
     const low = message.toLowerCase();
+    const ALWAYS_CORE = ["run_command", "list_directory", "read_file", "write_file", "memorize", "recall", "search_memory", "remember", "web_search", "template_search", "template_load", "arduino_compile", "arduino_write", "arduino_search"];
     const scored = allTools.map(t => {
-      const fn = t.function;
+      const fn = t.function || {};
+      const name = fn.name || "";
       let score = 0;
-      // Name match
-      const nameParts = fn.name.split("_");
+      const nameParts = name.split("_");
       for (const part of nameParts) {
         if (low.includes(part) && part.length > 2) score += 20;
       }
-      // Description match
-      const descWords = fn.description.toLowerCase().split(/\s+/);
+      const descWords = (fn.description || "").toLowerCase().split(/\s+/);
       for (const w of descWords) {
         if (low.includes(w) && w.length > 3) score += 2;
       }
-      // Boost common tools
-      if (["run_command", "list_directory", "read_file", "write_file", "memorize", "recall", "search", "system_info"].includes(fn.name)) score += 5;
-      return { tool: t, score };
+      if (ALWAYS_CORE.includes(name)) score += 100;
+      return { tool: t, score, name };
     });
-
     scored.sort((a, b) => b.score - a.score);
-
-    // Always include core tools + top scored
-    const core = scored.filter(s =>
-      ["run_command", "list_directory", "read_file", "write_file", "memorize", "recall"].includes(s.tool.function.name)
-    ).map(s => s.tool);
-
+    const core = scored.filter(s => ALWAYS_CORE.includes(s.name)).map(s => s.tool);
     const topScored = scored.filter(s => s.score > 0).slice(0, 40).map(s => s.tool);
-    const merged = [...new Map([...core, ...topScored].map(t => [t.function.name, t])).values()];
-
+    const merged = [...new Map([...core, ...topScored].map(t => [(t.function || {}).name || "", t])).values()];
     return merged.length > 5 ? merged : scored.slice(0, 30).map(s => s.tool);
   }
 
@@ -239,11 +231,16 @@ YOUR HOMELAB — THESE ARE FACTS, DO NOT RE-DISCOVER THEM:
 ZIGBEE RULES — CRITICAL:
 - ESP32-C6 has native Zigbee. Arduino core 3.1.1 at ~/.arduino15/packages/esp32/hardware/esp32/3.1.1/
 - ONLY use #include "Zigbee.h" — this single header includes ALL classes. NEVER include individual headers.
-- Available classes: ZigbeeTempSensor, ZigbeeCarbonDioxideSensor, ZigbeePressureSensor, ZigbeeLight, ZigbeeGateway
+- Available classes: ZigbeeTempSensor, ZigbeeCarbonDioxideSensor, ZigbeePressureSensor, ZigbeeLight, ZigbeeSwitch, ZigbeeGateway
 - For Zigbee projects: ALWAYS use arduino_compile tool with board="esp32c6-zigbee" — NEVER use run_command for compiling.
 - The fqbn esp32:esp32:esp32c6:ZigbeeMode=ed is set AUTOMATICALLY when you use board="esp32c6-zigbee".
 - NEVER compile Zigbee with plain esp32c6 board — it will fail with linker errors.
 - NEVER fall back to WiFi/MQTT when Zigbee compile fails. Fix the error instead.
+- Zigbee devices report via Zigbee ONLY — do NOT add ETBus or WiFi to Zigbee projects. ETBus is for WiFi-only devices like PowerWatch NZ.
+- ALWAYS call template_search before writing any new ESP32/Arduino code. If a matching template exists, load it and adapt it instead of writing from scratch.
+- NEVER silently replace a task with something easier. If you cannot complete a requirement (missing library, unknown API, compile fails repeatedly), STOP and tell the user exactly what is missing and what they need to do. Do NOT submit a simplified version without saying so.
+- ZigbeeLight = RECEIVES commands (relay, bulb, anything being controlled). ZigbeeSwitch = SENDS commands (remote, button, controller). NEVER swap these.
+- ALL Zigbee.addEndpoint() calls MUST come BEFORE Zigbee.begin() — endpoints added after begin() are silently ignored.
 - Zigbee library is at ~/.arduino15/packages/esp32/hardware/esp32/3.1.1/libraries/Zigbee/ NOT in ~/Arduino/libraries/
 - Home dir is /home/mantiz010 NOT /root/
 
@@ -305,6 +302,11 @@ ${memoryContext ? "\n⚠️ IMPORTANT — YOU ALREADY KNOW THIS (from your memor
   /**
    * Main agent loop — the core of Kate.
    */
+  clearConversation(userId: string, source: string): void {
+    const sessionId = `${source}-${userId}`;
+    this.sessions.delete(sessionId);
+  }
+
   async handleMessage(msg: AgentMessage): Promise<string> {
     const sessionId = msg.sessionId || "default";
     const userId = msg.userId || "user";

@@ -113,6 +113,6 @@ export const EVENTS = {
   MEMORY_STORED: "memory.stored",
   SKILL_CREATED: "skill.created", SKILL_ERROR: "skill.error",
   WEBHOOK_RECEIVED: "webhook.received", MQTT_MESSAGE: "mqtt.message",
-  MESSAGE_RECEIVED: "message.received", RESPONSE_SENT: "response.sent",
+  MESSAGE_RECEIVED: "message.received", RESPONSE_SENT: "response.sent", HEARTBEAT: "heartbeat", HEARTBEAT_ALERT: "heartbeat.alert", HEALTH_WARN: "health.warn", SYSTEM_ALERT: "system.alert", SYSTEM_HEALTH: "system.health", WEBHOOK: "webhook",
 };
 

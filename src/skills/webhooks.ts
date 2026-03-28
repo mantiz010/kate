@@ -1,5 +1,5 @@
 import type { Skill, SkillContext } from "../core/types.js";
-import { eventBus, Events } from "../core/eventbus.js";
+import { eventBus, EVENTS } from "../core/eventbus.js";
 import { createLogger } from "../core/logger.js";
 import http from "node:http";
 import fs from "node:fs";
@@ -143,7 +143,7 @@ const webhooks: Skill = {
 
           // Execute action
           if (hook.action === "event") {
-            eventBus.fire(hook.eventType || Events.WEBHOOK, `webhook:${hook.name}`, data);
+            eventBus.fire(hook.eventType || EVENTS.WEBHOOK, `webhook:${hook.name}`, data);
           } else if (hook.action === "log") {
             log.info(`Webhook data: ${JSON.stringify(data).slice(0, 200)}`);
           } else {

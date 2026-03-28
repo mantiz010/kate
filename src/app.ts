@@ -100,8 +100,7 @@ export class Kate {
     if (mode === "cli" || mode === "all") {
       const cli = new CLIIntegration(this.config.agent.name);
       cli.onMessage(async (msg) => {
-        const response = await messageHandler(msg);
-        return response;
+        await messageHandler(msg);
       });
       this.integrations.push(cli);
       await cli.start();
@@ -116,8 +115,7 @@ export class Kate {
           this.config.integrations.telegram.allowedUsers,
         );
         telegram.onMessage(async (msg) => {
-          const response = await messageHandler(msg);
-          return response;
+          await messageHandler(msg);
         });
         this.integrations.push(telegram);
         await telegram.start();
@@ -136,8 +134,7 @@ export class Kate {
           this.config.integrations.discord.allowedUsers,
         );
         discord.onMessage(async (msg) => {
-          const response = await messageHandler(msg);
-          return response;
+          await messageHandler(msg);
         });
         this.integrations.push(discord);
         await discord.start();

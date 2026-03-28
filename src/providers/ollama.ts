@@ -242,7 +242,7 @@ export class OllamaProvider implements Provider {
     onToken: (token: string) => void,
   ): Promise<{content: string; toolCalls: any[]}> {
     const body: any = {
-      model: this.model,
+      model: this.defaultModel,
       messages: msgs,
       stream: true,
       options: { temperature: opts.temperature || 0.7, num_predict: 8192, num_ctx: 32768 },

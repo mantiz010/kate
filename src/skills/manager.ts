@@ -50,6 +50,9 @@ export class SkillManager {
           case "git":
             skill = (await import("../skills/git.js")).default;
             break;
+          case "templates":
+            skill = (await import("../skills/templates.js")).default;
+            break;
           case "codeanalysis":
             skill = (await import("../skills/codeanalysis.js")).default;
             break;
@@ -125,8 +128,6 @@ export class SkillManager {
           case "etbus":
             skill = (await import("../skills/etbus.js")).default;
             break;
-          case "notify":
-            skill = (await import("../skills/notify.js")).default;
             break;
           case "proxmox":
             skill = (await import("../skills/proxmox.js")).default;

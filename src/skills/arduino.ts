@@ -2,7 +2,7 @@ import type { Skill, SkillContext } from "../core/types.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { exec } from "node:child_process";
+import { exec, execSync } from "node:child_process";
 import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
@@ -31,7 +31,7 @@ function preCompileFix(dir: string) {
       // Find header in user libraries
       let hPath = "";
       try {
-        const { execSync } = require("child_process");
+        
         hPath = execSync("find " + JSON.stringify(USER_LIBS) + " -name " + JSON.stringify(hName) + " -type f 2>/dev/null | head -1", { encoding: "utf-8", timeout: 5000 }).trim();
       } catch {}
       if (!hPath) continue;
@@ -81,11 +81,13 @@ function preCompileFix(dir: string) {
 
 // === AUTO-RESEARCH: Read headers before compile to learn real API ===
 function autoResearchHeaders(projDir: string): string {
+  
   const USER_LIBS = path.join(os.homedir(), "Arduino/libraries");
   const CORE_LIBS = path.join(os.homedir(), ".arduino15/packages/esp32/hardware/esp32");
+  const ARDUINO15 = path.join(os.homedir(), ".arduino15");
   const facts: string[] = [];
-  
-  // Find .ino files and extract #include lines
+  const missing: string[] = [];
+
   const inoFiles = fs.readdirSync(projDir).filter((f: string) => f.endsWith(".ino"));
   const allIncludes: string[] = [];
   for (const file of inoFiles) {
@@ -93,59 +95,44 @@ function autoResearchHeaders(projDir: string): string {
     const incs = [...code.matchAll(/#include\s*[<"]([^>"]+\.h)[>"]/g)].map(m => m[1]);
     allIncludes.push(...incs);
   }
-  
   const unique = [...new Set(allIncludes)];
-  
+
   for (const hName of unique) {
-    // Skip standard headers
-    if (["Arduino.h", "Wire.h", "SPI.h", "WiFi.h", "string.h", "stdio.h", "stdlib.h"].includes(hName)) continue;
-    
-    // Find header in user libs then core libs
+    if (["Arduino.h","Wire.h","SPI.h","WiFi.h","string.h","stdio.h","stdlib.h","stdint.h","stdbool.h","math.h"].includes(hName)) continue;
+
     let hPath = "";
     try {
-      const { execSync } = require("child_process");
-      hPath = execSync(
-        `find "${USER_LIBS}" -name "${hName}" -type f 2>/dev/null | head -1`,
-        { encoding: "utf-8", timeout: 3000 }
-      ).trim();
-      if (!hPath) {
-        // Search core libs (all versions)
-        hPath = execSync(
-          `find "${CORE_LIBS}" -name "${hName}" -type f 2>/dev/null | head -1`,
-          { encoding: "utf-8", timeout: 3000 }
-        ).trim();
-      }
+      hPath = execSync(`find "${USER_LIBS}" -name "${hName}" -type f 2>/dev/null | head -1`, { encoding: "utf-8", timeout: 5000 }).trim();
+      if (!hPath) hPath = execSync(`find "${CORE_LIBS}" -name "${hName}" -type f 2>/dev/null | head -1`, { encoding: "utf-8", timeout: 5000 }).trim();
+      if (!hPath) hPath = execSync(`find "${ARDUINO15}" -name "${hName}" -type f 2>/dev/null | head -1`, { encoding: "utf-8", timeout: 8000 }).trim();
     } catch {}
-    if (!hPath) continue;
-    
+
+    if (!hPath) {
+      const libGuess = hName.replace(/\.h$/, "").replace(/_/g, " ");
+      try {
+        execSync(`arduino-cli lib install "${libGuess}" 2>/dev/null`, { encoding: "utf-8", timeout: 60000 });
+        hPath = execSync(`find "${USER_LIBS}" -name "${hName}" -type f 2>/dev/null | head -1`, { encoding: "utf-8", timeout: 5000 }).trim();
+      } catch {}
+      if (!hPath) { missing.push(hName); continue; }
+    }
+
     let header = "";
     try { header = fs.readFileSync(hPath, "utf-8"); } catch { continue; }
-    
-    // Extract class names
-    const classes = [...header.matchAll(/^\s*class\s+(\w+)/gm)].map(m => m[1]);
-    
-    // Extract public methods (simplified)
-    const methods: string[] = [];
-    for (const cls of classes) {
-      // Find void begin or bool begin
-      const beginMatch = header.match(/(void|bool|int)\s+begin\s*\(/);
-      if (beginMatch) methods.push(`${cls}.begin() returns ${beginMatch[1]}`);
-      
-      // Find set* methods
-      const setters = [...header.matchAll(/(void|bool)\s+(set\w+)\s*\(/g)].map(m => `${m[2]}()`);
-      methods.push(...setters.slice(0, 5));
-    }
-    
-    if (classes.length > 0) {
-      facts.push(`[${hName}] classes: ${classes.join(", ")}${methods.length ? " | " + methods.join(", ") : ""}`);
+
+    const classes = [...header.matchAll(/^\s*class\s+(\w+)/gm)].map(m => m[1]).filter(c => !c.includes("_"));
+    const methodMatches = [...header.matchAll(/(?:void|bool|int|uint8_t|uint16_t|float|double|String|ResponseStatus|ResponseContainer|ResponseStructContainer)\s+(\w+)\s*\([^)]*\)/g)];
+    const methods = [...new Set(methodMatches.slice(0, 15).map(m => m[1] + "()").filter(m => !["if","while","for","return"].includes(m.replace("()",""))))];
+
+    if (classes.length > 0 || methods.length > 0) {
+      facts.push(`[${hName}] path: ${hPath}\n  classes: ${classes.join(", ") || "none"}\n  methods: ${methods.join(", ")}`);
     }
   }
-  
-  return facts.length > 0 ? "\n--- LIBRARY API (from actual headers) ---\n" + facts.join("\n") + "\n---" : "";
+
+  let result = "";
+  if (facts.length > 0) result += "\n--- LIBRARY API (from actual headers) ---\n" + facts.join("\n") + "\n---";
+  if (missing.length > 0) result += "\n--- MISSING LIBRARIES ---\n" + missing.map(m => "  MISSING: " + m).join("\n") + "\n--- Install with: arduino-cli lib install \"<name>\" ---";
+  return result;
 }
-
-
-// === SURGICAL FIX: Parse compile errors, return targeted fix instructions ===
 function parseSurgicalFix(compileOutput: string, projDir: string): string {
   const errors: {file: string, line: number, msg: string, code: string}[] = [];
   

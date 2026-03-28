@@ -1,5 +1,5 @@
 import type { Skill, SkillContext } from "../core/types.js";
-import { eventBus, Events } from "../core/eventbus.js";
+import { eventBus, EVENTS } from "../core/eventbus.js";
 import { createLogger } from "../core/logger.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -38,7 +38,7 @@ function save() { const d = path.dirname(HB_FILE); if (!fs.existsSync(d)) fs.mkd
 function addAlert(type: string, message: string) {
   state.alerts.push({ timestamp: Date.now(), type, message, resolved: false });
   if (state.alerts.length > 100) state.alerts.shift();
-  eventBus.fire(Events.SYSTEM_ALERT, "heartbeat", { type, message });
+  eventBus.fire(EVENTS.SYSTEM_ALERT, "heartbeat", { type, message });
   log.warn(`ALERT: [${type}] ${message}`);
   save();
 }
@@ -92,7 +92,7 @@ async function runBeat() {
     }
   }
 
-  eventBus.fire(Events.SYSTEM_HEALTH, "heartbeat", {
+  eventBus.fire(EVENTS.SYSTEM_HEALTH, "heartbeat", {
     cpu: Math.round((os.loadavg()[0] / os.cpus().length) * 100),
     mem: Math.round(((os.totalmem() - os.freemem()) / os.totalmem()) * 100),
     alerts: state.alerts.filter(a => !a.resolved).length,

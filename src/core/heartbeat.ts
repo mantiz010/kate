@@ -1,5 +1,5 @@
 import { createLogger } from "./logger.js";
-import { eventBus, Events } from "./eventbus.js";
+import { eventBus, EVENTS } from "./eventbus.js";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
@@ -80,10 +80,10 @@ export class HeartbeatEngine {
 
     if (cpuPct > state.thresholds.cpuCrit) {
       alerts.push(`🔴 CPU CRITICAL: ${cpuPct}% (load: ${load.toFixed(1)})`);
-      eventBus.fire(Events.HEALTH_CRITICAL, "heartbeat", { metric: "cpu", value: cpuPct });
+      eventBus.fire(EVENTS.HEALTH_CRITICAL, "heartbeat", { metric: "cpu", value: cpuPct });
     } else if (cpuPct > state.thresholds.cpuWarn) {
       alerts.push(`🟡 CPU Warning: ${cpuPct}%`);
-      eventBus.fire(Events.HEALTH_WARN, "heartbeat", { metric: "cpu", value: cpuPct });
+      eventBus.fire(EVENTS.HEALTH_WARN, "heartbeat", { metric: "cpu", value: cpuPct });
     }
 
     // ── Memory Check ───────────────────
@@ -93,10 +93,10 @@ export class HeartbeatEngine {
 
     if (memPct > state.thresholds.memCrit) {
       alerts.push(`🔴 MEMORY CRITICAL: ${memPct}%`);
-      eventBus.fire(Events.HEALTH_CRITICAL, "heartbeat", { metric: "memory", value: memPct });
+      eventBus.fire(EVENTS.HEALTH_CRITICAL, "heartbeat", { metric: "memory", value: memPct });
     } else if (memPct > state.thresholds.memWarn) {
       alerts.push(`🟡 Memory Warning: ${memPct}%`);
-      eventBus.fire(Events.HEALTH_WARN, "heartbeat", { metric: "memory", value: memPct });
+      eventBus.fire(EVENTS.HEALTH_WARN, "heartbeat", { metric: "memory", value: memPct });
     }
 
     // ── Disk Check ─────────────────────
@@ -105,10 +105,10 @@ export class HeartbeatEngine {
 
     if (diskPct > state.thresholds.diskCrit) {
       alerts.push(`🔴 DISK CRITICAL: ${diskPct}%`);
-      eventBus.fire(Events.HEALTH_CRITICAL, "heartbeat", { metric: "disk", value: diskPct });
+      eventBus.fire(EVENTS.HEALTH_CRITICAL, "heartbeat", { metric: "disk", value: diskPct });
     } else if (diskPct > state.thresholds.diskWarn) {
       alerts.push(`🟡 Disk Warning: ${diskPct}%`);
-      eventBus.fire(Events.HEALTH_WARN, "heartbeat", { metric: "disk", value: diskPct });
+      eventBus.fire(EVENTS.HEALTH_WARN, "heartbeat", { metric: "disk", value: diskPct });
     }
 
     // ── Ollama Check ───────────────────
@@ -118,7 +118,7 @@ export class HeartbeatEngine {
     } catch {
       if (this.beatCount % 5 === 0) { // Don't spam every minute
         alerts.push("🔴 Ollama is unreachable!");
-        eventBus.fire(Events.HEALTH_CRITICAL, "heartbeat", { metric: "ollama", value: "down" });
+        eventBus.fire(EVENTS.HEALTH_CRITICAL, "heartbeat", { metric: "ollama", value: "down" });
       }
     }
 
@@ -135,11 +135,11 @@ export class HeartbeatEngine {
     for (const alert of alerts) {
       log.warn(`Heartbeat: ${alert}`);
       state.alerts.push({ timestamp: Date.now(), type: "alert", message: alert, resolved: false });
-      eventBus.fire(Events.HEARTBEAT_ALERT, "heartbeat", { alert });
+      eventBus.fire(EVENTS.HEARTBEAT_ALERT, "heartbeat", { alert });
     }
 
     // ── Periodic heartbeat event ───────
-    eventBus.fire(Events.HEARTBEAT, "heartbeat", {
+    eventBus.fire(EVENTS.HEARTBEAT, "heartbeat", {
       cpu: cpuPct, mem: memPct, disk: diskPct,
       alerts: alerts.length, uptime: os.uptime(),
       beat: this.beatCount,
