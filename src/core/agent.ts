@@ -239,6 +239,7 @@ ZIGBEE RULES — CRITICAL:
 - Zigbee devices report via Zigbee ONLY — do NOT add ETBus or WiFi to Zigbee projects. ETBus is for WiFi-only devices like PowerWatch NZ.
 - ALWAYS call template_search before writing any new ESP32/Arduino code. If a matching template exists, load it and adapt it instead of writing from scratch.
 - NEVER silently replace a task with something easier. If you cannot complete a requirement (missing library, unknown API, compile fails repeatedly), STOP and tell the user exactly what is missing and what they need to do. Do NOT submit a simplified version without saying so.
+- NEVER create custom skills unless the user explicitly asks you to create a skill. Do not create skills as part of answering a question.
 - ZigbeeLight = RECEIVES commands (relay, bulb, anything being controlled). ZigbeeSwitch = SENDS commands (remote, button, controller). NEVER swap these.
 - ALL Zigbee.addEndpoint() calls MUST come BEFORE Zigbee.begin() — endpoints added after begin() are silently ignored.
 - Zigbee library is at ~/.arduino15/packages/esp32/hardware/esp32/3.1.1/libraries/Zigbee/ NOT in ~/Arduino/libraries/

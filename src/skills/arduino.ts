@@ -379,6 +379,33 @@ const arduino: Skill = {
           existingInfo = "📂 Found " + matches.length + " similar project(s):\n" +
             matches.slice(0, 5).map(m => "  • ~/Arduino/" + m.name).join("\n") + "\n\n";
         }
+        // ALWAYS search templates
+        let templateInfo = "";
+        try {
+          const templateDir = path.join(os.homedir(), ".kate", "templates");
+          if (fs.existsSync(templateDir)) {
+            const templates = fs.readdirSync(templateDir).filter(d => fs.statSync(path.join(templateDir, d)).isDirectory());
+            const query = (name + " " + desc + " " + board).toLowerCase();
+            const scored = templates.map(t => {
+              try {
+                const meta = JSON.parse(fs.readFileSync(path.join(templateDir, t, "meta.json"), "utf-8"));
+                let score = 0;
+                const q = query.split(/\s+/);
+                for (const w of q) {
+                  if (meta.name?.toLowerCase().includes(w)) score += 3;
+                  if (meta.description?.toLowerCase().includes(w)) score += 2;
+                  if (meta.tags?.some((tag: string) => tag.toLowerCase().includes(w))) score += 2;
+                  if (meta.board?.toLowerCase().includes(w)) score += 1;
+                }
+                return { name: t, score, description: meta.description, board: meta.board };
+              } catch { return { name: t, score: 0, description: "", board: "" }; }
+            }).filter(t => t.score > 0).sort((a, b) => b.score - a.score);
+            if (scored.length > 0) {
+              templateInfo = "\n📋 MATCHING TEMPLATES FOUND — load with template_load before writing code:\n" +
+                scored.slice(0, 3).map(t => `  • ${t.name} (score:${t.score}) — ${t.description}`).join("\n") + "\n⚠️ USE template_load to load the best match instead of writing from scratch!\n";
+            }
+          }
+        } catch {}
 
         // Create project with REAL code — model writes this via arduino_write
         ensureDir(PROJECT_DIR);
@@ -410,7 +437,7 @@ void loop() {
 
         fs.writeFileSync(path.join(projDir, name + ".ino"), starterCode);
 
-        return existingInfo +
+        return existingInfo + templateInfo +
           "✅ Project created: " + name + "\n" +
           "Board: " + b.name + " (" + b.fqbn + ")\n" +
           "Location: " + projDir + "\n\n" +
@@ -531,7 +558,7 @@ void loop() {
           );
           const clean = (stdout + "\n" + stderr).replace(/\x1b\[[0-9;]*m/g, "").trim();
           const sizeLines = clean.split("\n").filter((l: string) => l.includes("Sketch uses") || l.includes("Global variables"));
-          return "✅ Compiled: " + project + " (" + fqbn + ")\n" + sizeLines.join("\n");
+          return "✅ Compiled: " + project + "\n\n⚠️ REQUIREMENT CHECK — Before reporting done, verify ALL of these:\n1. Does the code include ALL sensors/protocols the user asked for?\n2. Are ALL Zigbee endpoints registered BEFORE Zigbee.begin()?\n3. Is ET-Bus only used if the user explicitly asked for it?\n4. Does the code compile without warnings about missing features?\nIf ANY requirement is missing — fix it NOW, do NOT report success yet." + " (" + fqbn + ")\n" + sizeLines.join("\n");
         } catch (err: any) {
           const errClean = ((err.stdout || "") + "\n" + (err.stderr || "")).replace(/\x1b\[[0-9;]*m/g, "");
           const errLines = errClean.split("\n").filter((l: string) => l.includes("error:") || l.includes("Error during"));

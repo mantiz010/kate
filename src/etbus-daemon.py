@@ -85,13 +85,13 @@ import urllib.request, json as _json
 def get_kate_stats():
     """Query Kate's live API for real skill/tool counts"""
     try:
-        with urllib.request.urlopen("http://localhost:3201/api/tools", timeout=3) as r:
-            tools = len(_json.loads(r.read()))
-    except: tools = 0
-    try:
         with urllib.request.urlopen("http://localhost:3201/api/skills", timeout=3) as r:
-            skills = len(_json.loads(r.read()))
-    except: skills = 0
+            data = _json.loads(r.read())
+            skills = len(data)
+            tools = sum(len(s.get("tools", [])) for s in data)
+    except:
+        skills = 0
+        tools = 0
     return skills, tools
 
 state = {

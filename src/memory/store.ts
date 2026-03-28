@@ -89,31 +89,36 @@ export class SQLiteMemory implements MemoryStore {
 
   async search(query: string, userId: string, limit = 10): Promise<MemoryEntry[]> {
     if (!this.db) return [];
-
-    // Simple keyword search (good enough for v1, can upgrade to vector later)
     const stopWords = new Set(["what","does","my","the","a","an","is","are","do","how","which","where","when","who","have","has","can","will","about","your","this","that","with","for","and","or","in","on","to","of","it","i","me","we","you"]);
-    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 1 && !stopWords.has(t));
+    const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 2 && !stopWords.has(t));
     if (terms.length === 0) return [];
-
     const conditions = terms.map(() => "(LOWER(key) LIKE ? OR LOWER(value) LIKE ?)").join(" OR ");
     const params: string[] = [];
-    for (const term of terms) {
-      params.push(`%${term}%`, `%${term}%`);
-    }
+    for (const term of terms) { params.push(`%${term}%`, `%${term}%`); }
     params.push(userId);
-
     const rows = this.db.prepare(`
-      SELECT *, 
-        (importance * 0.4 + (1.0 / (1.0 + (? - last_accessed) / 86400000.0)) * 0.3 + MIN(access_count, 10) / 10.0 * 0.3) as relevance
-      FROM memories 
-      WHERE ${conditions} AND user_id = ?
-      ORDER BY relevance DESC
-      LIMIT ?
-    `).all(Date.now(), ...params, limit);
-
-    return rows.map((r: any) => this.rowToEntry(r));
+      SELECT * FROM memories WHERE ${conditions} AND user_id = ? ORDER BY importance DESC LIMIT ?
+    `).all(...params, limit * 3) as any[];
+    const queryLower = query.toLowerCase();
+    const scored = rows.map(r => {
+      const keyLower = (r.key || "").toLowerCase();
+      const valLower = (r.value || "").toLowerCase();
+      let score = r.importance * 0.3;
+      if (keyLower.includes(queryLower)) score += 2.0;
+      if (valLower.includes(queryLower)) score += 1.5;
+      for (const term of terms) {
+        if (keyLower.includes(term)) score += 0.5;
+        if (valLower.includes(term)) score += 0.3;
+        if (keyLower.split(/\s+/).includes(term)) score += 0.3;
+      }
+      const daysSince = (Date.now() - r.last_accessed) / 86400000;
+      score += 0.2 / (1 + daysSince);
+      score += Math.min(r.access_count, 10) / 10 * 0.2;
+      return { row: r, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, limit).map(s => this.rowToEntry(s.row));
   }
-
   async getByCategory(category: string, userId: string, limit = 20): Promise<MemoryEntry[]> {
     if (!this.db) return [];
 
