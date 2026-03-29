@@ -165,7 +165,9 @@ ${t.params.map(p => `        { name: "${p.name}", type: "${p.type}", description
 
   const cases = tools.map(t => {
     return `      case "${t.name}": {
-        return "Executed ${t.name} with: " + JSON.stringify(args);
+        // TODO: Implement ${t.name} - use run(cmd) for shell commands or curl for HTTP
+        // Example: return run("curl -s http://172.168.1.8:8123/api/states");
+        return "Not yet implemented: ${t.name}. Use skill_edit to add real code.";
       }`;
   }).join("\n\n");
 
