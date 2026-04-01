@@ -76,7 +76,7 @@ export class Agent {
    */
   private filterTools(message: string, allTools: any[]): any[] {
     const low = message.toLowerCase();
-    const ALWAYS_CORE = ["run_command", "list_directory", "read_file", "write_file", "memorize", "recall", "search_memory", "remember", "search", "template_search", "template_load", "arduino_compile", "arduino_write", "arduino_search"];
+    const ALWAYS_CORE = ["run_command", "list_directory", "read_file", "write_file", "memorize", "recall", "search_memory", "remember", "search", "template_search", "template_load", "arduino_compile", "arduino_write", "arduino_search", "web_fetch", "fetch_url"];
     const scored = allTools.map(t => {
       const fn = t.function || {};
       const name = fn.name || "";
@@ -193,6 +193,7 @@ CORE RULES:
 2. Tasks — act immediately, no permission needed.
 3. If something fails — try a different approach.
 4. RESEARCH FIRST — for open-ended requests, use web search before writing code.
+- When searching for prices, if search results do not show actual prices, use web_fetch to load the actual page and extract the price directly. Do not give estimated prices — always fetch real data.
 5. Present ideas and let the user choose before building.
 
 ENGINEERING DECISIONS:
