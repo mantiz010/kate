@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Arduino IDE</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/editor/editor.main.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            background-color: #252526;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #3c3c3c;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .logo i {
+            color: #4ec9b0;
+        }
+        
+        .toolbar {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn {
+            background-color: #0078d4;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: background-color 0.2s;
+        }
+        
+        .btn:hover {
+            background-color: #005a9e;
+        }
+        
+        .btn:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        
+        .main-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 250px;
+            background-color: #252526;
+            padding: 10px;
+            overflow-y: auto;
+            border-right: 1px solid #3c3c3c;
+        }
+        
+        .file-list {
+            list-style: none;
+        }
+        
+        .file-list li {
+            padding: 8px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .file-list li:hover {
+            background-color: #3c3c3c;
+        }
+        
+        .file-list li.active {
+            background-color: #0078d4;
+        }
+        
+        .file-list li i {
+            width: 16px;
+            text-align: center;
+        }
+        
+        .editor-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        #editor {
+            flex: 1;
+            border: 1px solid #3c3c3c;
+        }
+        
+        .output-panel {
+            height: 200px;
+            background-color: #1e1e1e;
+            border-top: 1px solid #3c3c3c;
+            overflow-y: auto;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px 10px;
+            background-color: #252526;
+            border-bottom: 1px solid #3c3c3c;
+        }
+        
+        .status-bar {
+            background-color: #252526;
+            padding: 5px 10px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid #3c3c3c;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <i class="fas fa-microchip"></i>
+            <h2>Web Arduino IDE</h2>
+        </div>
+        <div class="toolbar">
+            <button id="compileBtn" class="btn">
+                <i class="fas fa-play-circle"></i> Compile
+            </button>
+            <button id="uploadBtn" class="btn" disabled>
+                <i class="fas fa-upload"></i> Upload
+            </button>
+        </div>
+    </div>
+    
+    <div class="main-container">
+        <div class="sidebar">
+            <h3>Files</h3>
+            <div id="fileList" class="loading">Loading files...</div>
+        </div>
+        
+        <div class="editor-container">
+            <div id="editor"></div>
+            <div class="output-panel">
+                <div class="output-header">
+                    <strong>Output</strong>
+                </div>
+                <div id="outputContent">Ready to compile...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status-bar">
+        <div class="status-item">
+            <i class="fas fa-folder"></i>
+            <span id="currentProject">Arduino</span>
+        </div>
+        <div class="status-item">
+            <i class="fas fa-code"></i>
+            <span id="currentFile">No file selected</span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/editor/editor.main.js"></script>
+    <script>
+        let editor;
+        let currentFile = '';
+        let currentProject = 'Arduino';
+        
+        // Initialize the editor
+        window.addEventListener('load', function() {
+            editor = monaco.editor.create(document.getElementById('editor'), {
+                value: '// Welcome to Web Arduino IDE\n// Select a file to edit',
+                language: 'cpp',
+                theme: 'vs-dark',
+                automaticLayout: true,
+                minimap: { enabled: true },
+                fontSize: 14,
+                scrollBeyondLastLine: false
+            });
+            
+            // Load file list
+            loadFileList();
+            
+            // Setup event listeners
+            document.getElementById('compileBtn').addEventListener('click', compileProject);
+        });
+        
+        function loadFileList() {
+            // Simulate loading files from Arduino directory
+            setTimeout(() => {
+                const files = [
+                    { name: 'main.ino' },
+                    { name: 'sensor.cpp' },
+                    { name: 'sensor.h' },
+                    { name: 'utils.cpp' },
+                    { name: 'utils.h' }
+                ];
+                
+                const fileList = document.getElementById('fileList');
+                fileList.innerHTML = '';
+                
+                files.forEach(file => {
+                    const li = document.createElement('li');
+                    li.innerHTML = `<i class="fas fa-file-code"></i> ${file.name}`;
+                    li.addEventListener('click', () => openFile(file.name));
+                    fileList.appendChild(li);
+                });
+            }, 500);
+        }
+        
+        function openFile(filename) {
+            // Simulate loading file content
+            setTimeout(() => {
+                const sampleContent = `// ${filename}
+#include <Arduino.h>
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Hello from ${filename}!");
+}
+
+void loop() {
+  // Main loop code here
+  delay(1000);
+}`;
+                
+                editor.setValue(sampleContent);
+                currentFile = filename;
+                document.getElementById('currentFile').textContent = filename;
+                
+                // Update active file in sidebar
+                document.querySelectorAll('.file-list li').forEach(li => {
+                    li.classList.remove('active');
+                });
+                event.target.classList.add('active');
+            }, 200);
+        }
+        
+        function compileProject() {
+            if (!currentFile) {
+                updateOutput('Please select a file to compile');
+                return;
+            }
+            
+            updateOutput('Compiling project...');
+            
+            // Simulate compilation process
+            setTimeout(() => {
+                updateOutput('Compilation completed successfully');
+                updateOutput('Sketch uses 1234 bytes (4%) of program storage space');
+                updateOutput('Global variables use 12 bytes (0%) of dynamic memory');
+                updateOutput('Sketch compiled successfully');
+            }, 1000);
+        }
+        
+        function updateOutput(text) {
+            const output = document.getElementById('outputContent');
+            output.textContent += text + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+    </script>
+</body>
+</html>

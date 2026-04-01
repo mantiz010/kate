@@ -226,6 +226,25 @@ export class OllamaProvider implements Provider {
       } catch {}
     }
 
+    // Pattern 3: <function=name><parameter=key>value</parameter></function>
+    const funcRegex = /<function=(\w+)>([\s\S]*?)<\/function>/g;
+    while ((match = funcRegex.exec(text)) !== null) {
+      const name = match[1];
+      const body = match[2];
+      const args: Record<string, string> = {};
+      const paramRegex = /<parameter=(\w+)>([\s\S]*?)<\/parameter>/g;
+      let pmatch;
+      while ((pmatch = paramRegex.exec(body)) !== null) {
+        args[pmatch[1]] = pmatch[2].trim();
+      }
+      if (name && toolNames.has(name)) {
+        calls.push({
+          id: `tc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name,
+          arguments: args,
+        });
+      }
+    }
     return calls;
   }
 

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Arduino IDE</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --editor-bg: #1e1e1e;
+            --sidebar-bg: #252526;
+            --panel-bg: #2d2d30;
+            --text-color: #d4d4d4;
+        }
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        #sidebar {
+            background-color: var(--sidebar-bg);
+            height: 100vh;
+            overflow-y: auto;
+            border-right: 1px solid #444;
+        }
+        #editor-container {
+            height: calc(100vh - 56px);
+            border: 1px solid #444;
+        }
+        #output-panel {
+            background-color: var(--panel-bg);
+            height: 200px;
+            overflow-y: auto;
+            border-top: 1px solid #444;
+            font-family: monospace;
+            font-size: 14px;
+            padding: 10px;
+        }
+        .file-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+        }
+        .file-item:hover {
+            background-color: #333;
+        }
+        .file-item.active {
+            background-color: #007acc;
+        }
+        .btn-compile {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .btn-compile:hover {
+            background-color: #45a049;
+        }
+        .editor-container {
+            height: 100%;
+        }
+        #editor {
+            height: 100%;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid h-100 p-0">
+        <div class="row h-100">
+            <!-- Sidebar -->
+            <div class="col-md-2 col-lg-2 p-0" id="sidebar">
+                <div class="p-3">
+                    <h5><i class="fas fa-folder-open"></i> Files</h5>
+                    <div id="file-list">
+                        <!-- File list will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-10 col-lg-10 p-0">
+                <div class="d-flex justify-content-between align-items-center p-3 bg-dark">
+                    <h4>Arduino IDE</h4>
+                    <button id="compile-btn" class="btn-compile">
+                        <i class="fas fa-play"></i> Compile
+                    </button>
+                </div>
+                
+                <div id="editor-container">
+                    <div id="editor"></div>
+                </div>
+                
+                <div id="output-panel">
+                    <h6><i class="fas fa-terminal"></i> Output</h6>
+                    <div id="output-content">Ready to compile...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Monaco Editor from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+    <script>
+        // Initialize Monaco Editor
+        require.config({ paths: { 'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' }});
+        let editor = null;
+        let currentFile = 'main.ino';
+
+        // Sample files for demonstration
+        const sampleFiles = {
+            'main.ino': `#include <Arduino.h>
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Arduino IDE Web Interface");
+}
+
+void loop() {
+  Serial.println("Loop running...");
+  delay(1000);
+}`,
+            'sensor.cpp': `#include "sensor.h"
+
+void Sensor::init() {
+  // Initialize sensor
+}
+
+int Sensor::readValue() {
+  return 42;
+}`,
+            'sensor.h': `#ifndef SENSOR_H
+#define SENSOR_H
+
+class Sensor {
+public:
+  void init();
+  int readValue();
+};
+
+#endif
+`,
+            'config.h': `#define BAUD_RATE 9600
+#define SENSOR_PIN A0
+`
+        };
+
+        // Initialize the interface
+        document.addEventListener('DOMContentLoaded', function() {
+            // Populate file list
+            const fileList = document.getElementById('file-list');
+            Object.keys(sampleFiles).forEach(filename => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.textContent = filename;
+                fileItem.onclick = () => loadFile(filename);
+                fileList.appendChild(fileItem);
+            });
+
+            // Load first file
+            loadFile('main.ino');
+
+            // Compile button event
+            document.getElementById('compile-btn').addEventListener('click', compileProject);
+        });
+
+        // Load file content into editor
+        function loadFile(filename) {
+            currentFile = filename;
+            const content = sampleFiles[filename];
+            
+            // Update active file in sidebar
+            document.querySelectorAll('.file-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.textContent === filename) {
+                    item.classList.add('active');
+                }
+            });
+
+            // Initialize editor if not already done
+            if (!editor) {
+                require(['vs/editor/editor.main'], function() {
+                    editor = monaco.editor.create(document.getElementById('editor'), {
+                        value: content,
+                        language: filename.endsWith('.cpp') || filename.endsWith('.c') ? 'cpp' : 'cpp',
+                        theme: 'vs-dark',
+                        automaticLayout: true,
+                        minimap: { enabled: false }
+                    });
+                });
+            } else {
+                editor.setValue(content);
+            }
+        }
+
+        // Compile project function
+        function compileProject() {
+            const output = document.getElementById('output-content');
+            output.innerHTML = '<span class="text-info">Compiling project Arduino...</span><br>';
+            
+            // Simulate compilation process
+            setTimeout(() => {
+                output.innerHTML += '<span class="text-success">Compilation successful!</span><br>';
+                output.innerHTML += '<span class="text-warning">Sending POST request to http://172.168.1.25:3201/api/message</span><br>';
+                
+                // Simulate POST request
+                setTimeout(() => {
+                    const message = `compile project Arduino`;
+                    output.innerHTML += `<span class="text-success">POST request sent: ${message}</span><br>`;
+                    output.innerHTML += '<span class="text-success">Request completed successfully!</span><br>';
+                }, 500);
+            }, 1000);
+        }
+    </script>
+</body>
+</html>

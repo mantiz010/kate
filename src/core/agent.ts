@@ -76,7 +76,7 @@ export class Agent {
    */
   private filterTools(message: string, allTools: any[]): any[] {
     const low = message.toLowerCase();
-    const ALWAYS_CORE = ["run_command", "list_directory", "read_file", "write_file", "memorize", "recall", "search_memory", "remember", "web_search", "template_search", "template_load", "arduino_compile", "arduino_write", "arduino_search"];
+    const ALWAYS_CORE = ["run_command", "list_directory", "read_file", "write_file", "memorize", "recall", "search_memory", "remember", "search", "template_search", "template_load", "arduino_compile", "arduino_write", "arduino_search"];
     const scored = allTools.map(t => {
       const fn = t.function || {};
       const name = fn.name || "";
@@ -96,7 +96,7 @@ export class Agent {
     const core = scored.filter(s => ALWAYS_CORE.includes(s.name)).map(s => s.tool);
     const topScored = scored.filter(s => s.score > 0).slice(0, 40).map(s => s.tool);
     const merged = [...new Map([...core, ...topScored].map(t => [(t.function || {}).name || "", t])).values()];
-    return merged.length > 5 ? merged : scored.slice(0, 30).map(s => s.tool);
+    return merged.length > 15 ? merged : scored.slice(0, 35).map(s => s.tool);
   }
 
   /**
