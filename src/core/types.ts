@@ -183,7 +183,7 @@ export const KateConfigSchema = z.object({
   }).default({}),
   skills: z.object({
     directory: z.string().default("~/.kate/skills"),
-    builtin: z.array(z.string()).default(["shell", "files", "web", "memory", "browser", "scheduler", "pcb", "arduino", "workers", "skillforge", "router", "git", "codeanalysis", "packages", "monitoring", "apibuilder", "cicd", "autohealer", "agentcomm", "websearch", "github", "docs", "downloads", "apitester", "docker", "ssh", "database", "network", "backup", "mqtt", "services", "codegen", "installer", "events", "templates"]),
+    builtin: z.array(z.string()).default(["shell", "files", "web", "memory", "browser", "scheduler", "pcb", "arduino", "workers", "skillforge", "router", "git", "codeanalysis", "packages", "monitoring", "apibuilder", "cicd", "autohealer", "agentcomm", "websearch", "github", "docs", "downloads", "apitester", "docker", "ssh", "database", "network", "backup", "mqtt", "services", "codegen", "installer", "events", "templates", "vision", "taskboard", "notify"]),
   }).default({}),
   logging: z.object({
     level: z.enum(["debug", "info", "warn", "error"]).default("info"),

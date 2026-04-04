@@ -150,6 +150,15 @@ export class SkillManager {
           case "marketplace":
             skill = (await import("../skills/marketplace.js")).default;
             break;
+          case "vision":
+            skill = (await import("../skills/vision.js")).default;
+            break;
+          case "taskboard":
+            skill = (await import("../skills/taskboard.js")).default;
+            break;
+          case "notify":
+            skill = (await import("../skills/notify.js")).default;
+            break;
 
           default:
             log.warn(`Unknown builtin skill: ${name}`);

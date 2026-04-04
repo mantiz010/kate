@@ -40,6 +40,9 @@ const SKILL_KEYWORDS: Record<string, string[]> = {
   "builtin.eventbus":    ["event", "rule", "trigger", "react", "chain", "bus", "fire event"],
   "builtin.evolve":      ["evolve", "evolution", "self-fix", "learn", "error pattern", "self-review", "self-heal"],
   "builtin.heartbeat":   ["heartbeat", "health check", "briefing", "daily", "proactive", "threshold", "alert"],
+  "builtin.vision":      ["image", "photo", "picture", "screenshot", "ocr", "vision", "see", "look at", "analyze image", "pcb photo", "camera"],
+  "builtin.taskboard":   ["task", "todo", "project", "assign", "deadline", "tracking", "board", "backlog", "sprint", "open tasks"],
+  "builtin.notify":      ["notify", "alert", "notification", "send alert", "tell me", "push", "message me", "warn me"],
 };
 
 const ALWAYS_INCLUDE = ["builtin.shell", "builtin.files", "builtin.memory", "builtin.websearch"];
@@ -73,6 +76,10 @@ const INTENT_PATTERNS: Array<{ pattern: RegExp; skills: string[] }> = [
   { pattern: /alternative|equivalent|replace|substitute/i, skills: ["builtin.partpicker"] },
   { pattern: /datasheet|spec sheet|data sheet/i, skills: ["builtin.partpicker", "builtin.websearch"] },
   { pattern: /price|cost|cheap|expensive|how much/i, skills: ["builtin.partpicker"] },
+  { pattern: /image|photo|picture|screenshot|look at|analyze.*image|ocr|read.*text.*from/i, skills: ["builtin.vision"] },
+  { pattern: /pcb.*photo|board.*image|schematic.*image|circuit.*photo/i, skills: ["builtin.vision", "builtin.pcb"] },
+  { pattern: /task|todo|project.*track|backlog|what.s open|my tasks|create.*task/i, skills: ["builtin.taskboard"] },
+  { pattern: /notify|alert me|send.*notification|push.*message|tell me when|warn me/i, skills: ["builtin.notify"] },
 ];
 
 // Force these skills for matching keywords — ALWAYS include all their tools
