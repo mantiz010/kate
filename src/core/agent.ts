@@ -8,6 +8,9 @@ import { SkillManager } from "../skills/manager.js";
 import { InMemoryStore } from "../memory/store.js";
 import { loadConfig } from "./config.js";
 import { saveMessage } from "./chathistory.js";
+import { needsPlan, buildPlanPrompt } from "./planner.js";
+import { recordSuccess, recordFailure, getRelevantLessons } from "./learner.js";
+import { filterTools as smartFilterTools } from "./toolfilter.js";
 
 const MAX_ROUNDS = 100;
 const OLLAMA_URL = "http://172.168.1.162:11434";
@@ -72,47 +75,64 @@ export class Agent {
   }
 
   /**
-   * Filter tools to most relevant ~50 for this message.
+   * Filter tools using smart intent-based matching from toolfilter.ts,
+   * then convert to OpenAI-compatible format.
    */
-  private filterTools(message: string, allTools: any[]): any[] {
-    const low = message.toLowerCase();
+  private filterToolsSmart(message: string, allSchemas: any[]): any[] {
+    // Use the smart filter from toolfilter.ts (intent patterns + keywords + force-skills)
+    const allTools = this.skills.getAllTools();
+    const skillToolMap = this.skills.getSkillToolMap();
+    const filtered = smartFilterTools(allTools, skillToolMap, message);
+    const filteredNames = new Set(filtered.map(t => t.name));
+
+    // Return only the OpenAI schemas that match filtered tool names
+    const result = allSchemas.filter(s => filteredNames.has(s.function?.name));
+
+    // Always include core tools even if smart filter missed them
     const ALWAYS_CORE = ["run_command", "list_directory", "read_file", "write_file", "memorize", "recall", "search_memory", "remember", "search", "template_search", "template_load", "arduino_compile", "arduino_write", "arduino_search", "web_fetch", "fetch_url"];
-    const scored = allTools.map(t => {
-      const fn = t.function || {};
-      const name = fn.name || "";
-      let score = 0;
-      const nameParts = name.split("_");
-      for (const part of nameParts) {
-        if (low.includes(part) && part.length > 2) score += 20;
+    for (const schema of allSchemas) {
+      const name = schema.function?.name;
+      if (name && ALWAYS_CORE.includes(name) && !filteredNames.has(name)) {
+        result.push(schema);
       }
-      const descWords = (fn.description || "").toLowerCase().split(/\s+/);
-      for (const w of descWords) {
-        if (low.includes(w) && w.length > 3) score += 2;
-      }
-      if (ALWAYS_CORE.includes(name)) score += 100;
-      return { tool: t, score, name };
-    });
-    scored.sort((a, b) => b.score - a.score);
-    const core = scored.filter(s => ALWAYS_CORE.includes(s.name)).map(s => s.tool);
-    const topScored = scored.filter(s => s.score > 0).slice(0, 40).map(s => s.tool);
-    const merged = [...new Map([...core, ...topScored].map(t => [(t.function || {}).name || "", t])).values()];
-    return merged.length > 15 ? merged : scored.slice(0, 35).map(s => s.tool);
+    }
+
+    // Minimum floor: if smart filter returned too few, pad with top keyword matches
+    if (result.length < 15) {
+      const low = message.toLowerCase();
+      const extras = allSchemas
+        .filter(s => !result.includes(s))
+        .map(s => {
+          const name = s.function?.name || "";
+          let score = 0;
+          for (const part of name.split("_")) {
+            if (low.includes(part) && part.length > 2) score += 10;
+          }
+          return { schema: s, score };
+        })
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 20);
+      result.push(...extras.map(x => x.schema));
+    }
+
+    return result;
   }
 
   /**
    * Call Ollama API.
    */
-  private async callOllama(messages: Message[], tools: any[]): Promise<{ content: string; toolCalls: any[] }> {
+  private async callOllama(messages: Message[], tools: any[], opts?: { think?: boolean; temperature?: number }): Promise<{ content: string; toolCalls: any[] }> {
     const body = {
       model: this.model,
       messages,
       tools: tools.length > 0 ? tools : undefined,
       stream: true,
       options: {
-        temperature: 0.15,
+        temperature: opts?.temperature ?? 0.15,
         num_predict: 8192,
         num_ctx: 32768,
-        think: false,
+        think: opts?.think ?? false,
       },
     };
 
@@ -244,7 +264,7 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
     // Save to history
     try { saveMessage(sessionId, "user", msg.content); } catch {}
 
-    // Load memory context
+    // Load memory context (deduplicated — only inject in system prompt, not user message)
     let memoryContext = "";
     try {
       log("🧠", "MEMORY", "searching for: " + msg.content.slice(0, 40) + " userId=" + userId, "35");
@@ -256,27 +276,50 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
       // Always load user profile
       const profile = await this.memory.search("user profile network arduino", userId, 3);
       if (profile?.length) {
-        memoryContext += "\n" + profile.map((m: any) => `${m.key}: ${m.value}`).join("\n");
+        // Deduplicate: only add profile entries not already in memoryContext
+        const existing = new Set(memoryContext.split("\n").map(l => l.split(":")[0].trim()));
+        const newEntries = profile.filter((m: any) => !existing.has(m.key));
+        if (newEntries.length) {
+          memoryContext += "\n" + newEntries.map((m: any) => `${m.key}: ${m.value}`).join("\n");
+        }
       }
     } catch {}
 
-    // Build messages
-    const systemPrompt = this.buildSystemPrompt(memoryContext);
+    // Fetch relevant lessons from past successes/failures
+    let lessonsContext = "";
+    try {
+      const lessons = getRelevantLessons(msg.content, 5);
+      if (lessons.length > 0) {
+        lessonsContext = "\nLESSONS FROM EXPERIENCE:\n" + lessons.join("\n");
+        log("📚", "LEARNER", `${lessons.length} relevant lesson(s)`, "33");
+      }
+    } catch {}
+
+    // Detect complex tasks and activate planner + thinking
+    const isComplex = needsPlan(msg.content);
+    let userContent = msg.content;
+    if (isComplex) {
+      userContent = buildPlanPrompt(msg.content);
+      log("📋", "PLANNER", "Complex task detected — plan prompt injected", "36");
+    }
+
+    // Build messages — memory only in system prompt (no duplication)
+    const systemPrompt = this.buildSystemPrompt(memoryContext + lessonsContext);
     const history = this.sessions.get(sessionId) || [];
 
-    // Keep last 6 messages
+    // Keep last 6 exchanges (12 messages)
     if (history.length > 12) history.splice(0, history.length - 12);
 
     const messages: Message[] = [
       { role: "system", content: systemPrompt },
       ...history,
-      { role: "user", content: (memoryContext ? "Context from my memory (use this):\n" + memoryContext + "\n\nUser question: " : "") + msg.content },
+      { role: "user", content: userContent },
     ];
 
-    // Get all tools and filter
+    // Get all tools and filter using intent-based smart matching
     const allTools = this.getToolSchemas();
-    const tools = this.filterTools(msg.content, allTools);
-    log("🎯", "FILTER", `${tools.length}/${allTools.length} tools`, "33");
+    const tools = this.filterToolsSmart(msg.content, allTools);
+    log("🎯", "FILTER", `${tools.length}/${allTools.length} tools (smart)`, "33");
 
     // Agent loop
     let round = 0;
@@ -288,9 +331,11 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
     while (round < MAX_ROUNDS) {
       round++;
 
-      log("⚡", `ROUND ${round}`, `→ ${this.model} (${tools.length} tools)`, "36");
+      // Enable thinking on round 1 for complex tasks — lets the model reason before acting
+      const ollamaOpts = (isComplex && round === 1) ? { think: true, temperature: 0.3 } : undefined;
+      log("⚡", `ROUND ${round}`, `→ ${this.model} (${tools.length} tools)${ollamaOpts?.think ? " [THINKING]" : ""}`, "36");
 
-      const response = await this.callOllama(messages, tools);
+      const response = await this.callOllama(messages, tools, ollamaOpts);
 
       // If model returned text content
       if (response.content) {
@@ -338,7 +383,17 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
         const success = !result.startsWith("Error:");
         log("  " + (success ? "✓" : "✗"), fnName, `${elapsed}ms — ${result.slice(0, 80)}`, success ? "32" : "31");
 
+        // Record outcome for learning
+        try {
+          if (success) {
+            recordSuccess(fnName, JSON.stringify(fnArgs).slice(0, 200), result.slice(0, 200));
+          } else {
+            recordFailure(fnName, JSON.stringify(fnArgs).slice(0, 200), result.slice(0, 200));
+          }
+        } catch {}
+
         toolResults.push(result);
+
         // auto-remember compile outcomes
         if (fnName.includes("compile") && result.includes("error:")) {
           const err = result.split("\n").find((l: string) => l.includes("error:")) || result.slice(0, 150);
@@ -348,10 +403,13 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
           try { await this.executeTool("remember", { key: "ok_" + Date.now(), value: result.split("\n")[0].slice(0, 200), category: "fact", importance: 0.5 }, userId, "auto"); } catch {}
         }
 
-        // Add tool result back to messages
+        // Add tool result back to messages — on failure, append recovery guidance
+        const toolContent = success
+          ? result.slice(0, 4000)
+          : result.slice(0, 3000) + "\n\n⚠️ This tool failed. Try a different approach or different tool. Do NOT repeat the exact same call.";
         messages.push({
           role: "tool",
-          content: result.slice(0, 4000),
+          content: toolContent,
           tool_call_id: tc.id || fnName,
         });
       }

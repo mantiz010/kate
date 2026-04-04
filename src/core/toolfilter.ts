@@ -132,11 +132,15 @@ export function filterTools(
 
   // Force-include skills based on keywords
     const msgLow = message.toLowerCase();
-    for (const fs of FORCE_SKILLS) {
-      if (fs.words.some(w => msgLow.includes(w))) {
-        for (const tool of allTools) {
-          if (tool.skillId === fs.skillId && !filtered.find((t: any) => t.name === tool.name)) {
-            filtered.push(tool);
+    for (const forceSkill of FORCE_SKILLS) {
+      if (forceSkill.words.some(w => msgLow.includes(w))) {
+        const skillTools = skillToolMap.get(forceSkill.skillId);
+        if (skillTools) {
+          const existingNames = new Set(filtered.map(t => t.name));
+          for (const tool of skillTools) {
+            if (!existingNames.has(tool.name)) {
+              filtered.push(tool);
+            }
           }
         }
       }

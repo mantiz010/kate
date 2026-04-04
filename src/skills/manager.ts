@@ -201,6 +201,20 @@ export class SkillManager {
     return tools;
   }
 
+  /** Returns a map of skillId → tools for smart filtering */
+  getSkillToolMap(): Map<string, ToolDefinition[]> {
+    const map = new Map<string, ToolDefinition[]>();
+    for (const [id, skill] of this.skills) {
+      map.set(id, [...skill.tools]);
+    }
+    return map;
+  }
+
+  /** Get the skillId that owns a tool */
+  getToolSkillId(toolName: string): string | undefined {
+    return this.toolToSkill.get(toolName);
+  }
+
   async executeTool(toolName: string, args: Record<string, unknown>, ctx: SkillContext): Promise<string> {
     const skillId = this.toolToSkill.get(toolName);
     if (!skillId) throw new Error(`No skill registered for tool: ${toolName}`);
