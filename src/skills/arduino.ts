@@ -349,16 +349,6 @@ const arduino: Skill = {
       { name: "project", type: "string", description: "Project name", required: true },
       { name: "board", type: "string", description: "Board type (default: esp32)", required: false },
     ] },
-    { name: "arduino_ota", description: "Compile and flash firmware to an ESP device over WiFi (OTA). Device must be running ArduinoOTA.", parameters: [
-      { name: "project", type: "string", description: "Project name to compile and flash", required: true },
-      { name: "ip", type: "string", description: "IP address of the ESP device", required: true },
-      { name: "board", type: "string", description: "Board type (default: esp32)", required: false },
-      { name: "password", type: "string", description: "OTA password if set (default: none)", required: false },
-    ] },
-    { name: "arduino_export_bin", description: "Compile project and export the .bin file. Returns path to .bin", parameters: [
-      { name: "project", type: "string", description: "Project name", required: true },
-      { name: "board", type: "string", description: "Board type (default: esp32)", required: false },
-    ] },
     { name: "arduino_list_ports", description: "List available serial ports", parameters: [] },
   ],
 
@@ -674,89 +664,6 @@ void loop() {
           const { stdout } = await execAsync("arduino-cli board list 2>/dev/null || ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null", { timeout: 10000 });
           return stdout || "No serial ports found";
         } catch { return "No serial ports found"; }
-      }
-
-      case "arduino_export_bin": {
-        let project = ((args.project || args.name || "") as string).trim();
-        if (project.startsWith("~")) project = project.replace("~", os.homedir());
-        let projDir = path.join(PROJECT_DIR, project);
-        if (!fs.existsSync(projDir)) projDir = path.join(USER_ARDUINO, project);
-        if (!fs.existsSync(projDir)) return "Not found: " + project;
-
-        const outDir = path.join(projDir, "build");
-        ensureDir(outDir);
-
-        let fqbn = "esp32:esp32:esp32";
-        try { const meta = JSON.parse(fs.readFileSync(path.join(projDir, "project.json"), "utf-8")); const brd = BOARDS[meta.board]; if (brd) fqbn = brd.fqbn; } catch {}
-        if (args.board) { const brd = BOARDS[resolveBoard(args.board as string)]; if (brd) fqbn = brd.fqbn; }
-        if (!fqbn) fqbn = "esp32:esp32:esp32";
-
-        try {
-          await execAsync(
-            "arduino-cli compile --fqbn \"" + fqbn + "\" --libraries \"" + USER_LIBS + "\" --output-dir \"" + outDir + "\" \"" + projDir + "\" 2>&1",
-            { timeout: 180000 }
-          );
-          const bins = fs.readdirSync(outDir).filter((f: string) => f.endsWith(".bin"));
-          if (bins.length === 0) return "Compiled but no .bin found in " + outDir;
-          return "Compiled. Binary: " + path.join(outDir, bins[0]) + "\nAll files: " + bins.join(", ");
-        } catch (err: any) {
-          return "Compile failed: " + (err.stderr || err.message || "").slice(0, 500);
-        }
-      }
-
-      case "arduino_ota": {
-        let project = ((args.project || args.name || "") as string).trim();
-        const ip = args.ip as string;
-        const otaPass = (args.password as string) || "";
-        if (!ip) return "Error: IP address required for OTA upload";
-
-        if (project.startsWith("~")) project = project.replace("~", os.homedir());
-        let projDir = path.join(PROJECT_DIR, project);
-        if (!fs.existsSync(projDir)) projDir = path.join(USER_ARDUINO, project);
-        if (!fs.existsSync(projDir)) return "Not found: " + project;
-
-        const outDir = path.join(projDir, "build");
-        ensureDir(outDir);
-
-        let fqbn = "esp32:esp32:esp32";
-        try { const meta = JSON.parse(fs.readFileSync(path.join(projDir, "project.json"), "utf-8")); const brd = BOARDS[meta.board]; if (brd) fqbn = brd.fqbn; } catch {}
-        if (args.board) { const brd = BOARDS[resolveBoard(args.board as string)]; if (brd) fqbn = brd.fqbn; }
-        if (!fqbn) fqbn = "esp32:esp32:esp32";
-
-        // Step 1: Compile and export .bin
-        try {
-          await execAsync(
-            "arduino-cli compile --fqbn \"" + fqbn + "\" --libraries \"" + USER_LIBS + "\" --output-dir \"" + outDir + "\" \"" + projDir + "\" 2>&1",
-            { timeout: 180000 }
-          );
-        } catch (err: any) {
-          return "Compile failed: " + (err.stderr || err.message || "").slice(0, 500);
-        }
-
-        // Step 2: Find the .bin file
-        const bins = fs.readdirSync(outDir).filter((f: string) => f.endsWith(".ino.bin") || f.endsWith(".bin"));
-        const binFile = bins.find((b: string) => b.includes(".ino.bin")) || bins[0];
-        if (!binFile) return "Compiled but no .bin found";
-        const binPath = path.join(outDir, binFile);
-
-        // Step 3: Determine if ESP8266 or ESP32
-        const isESP8266 = fqbn.includes("esp8266");
-        const espotaPath = isESP8266
-          ? os.homedir() + "/.arduino15/packages/esp8266/hardware/esp8266/3.1.2/tools/espota.py"
-          : os.homedir() + "/.arduino15/packages/esp32/hardware/esp32/3.3.7/tools/espota.py";
-
-        if (!fs.existsSync(espotaPath)) return "espota.py not found at " + espotaPath;
-
-        // Step 4: Push via OTA
-        let cmd = "python3 \"" + espotaPath + "\" -i " + ip + " -p 3232 -f \"" + binPath + "\"";
-        if (otaPass) cmd += " -a " + otaPass;
-
-        try {
-          const { stdout, stderr } = await execAsync(cmd, { timeout: 120000 });
-          return "OTA upload to " + ip + " — SUCCESS\n" + (stdout + stderr).slice(0, 500);
-        } catch (err: any) {
-          return "OTA upload to " + ip + " — FAILED\n" + (err.stderr || err.message || "").slice(0, 500) + "\n\nMake sure the device is running ArduinoOTA and is on the network.";
-        }
       }
 
       case "arduino_export_bin": {

@@ -65,13 +65,21 @@ async function searchStackOverflow(query: string, count: number): Promise<Search
 
 async function fetchClean(url: string, maxLen = 15000): Promise<string> {
   try {
-    const { stdout } = await execAsync(
-      "curl -s -L -m 15 -H \"User-Agent: Kate/1.0\" \"" + url + "\"",
-      { timeout: 20000, maxBuffer: 5 * 1024 * 1024 },
-    );
-    return stdout
+    // Use native fetch — safe from command injection (no shell involved)
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Kate/1.0" },
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    clearTimeout(timer);
+    const html = await res.text();
+    return html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<nav[\s\S]*?<\/nav>/gi, "")
+      .replace(/<footer[\s\S]*?<\/footer>/gi, "")
       .replace(/<[^>]+>/g, " ")
       .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
       .replace(/\s+/g, " ").trim().slice(0, maxLen);
@@ -178,11 +186,17 @@ const websearch: Skill = {
 
       case "fetch_json": {
         try {
-          const { stdout } = await execAsync(
-            "curl -s -L -m 15 -H \"Accept: application/json\" -H \"User-Agent: Kate\" \"" + (args.url as string) + "\"",
-            { timeout: 15000 },
-          );
-          return stdout.slice(0, 15000);
+          // Use native fetch — safe from command injection
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 15000);
+          const res = await fetch(args.url as string, {
+            headers: { "Accept": "application/json", "User-Agent": "Kate/1.0" },
+            signal: controller.signal,
+            redirect: "follow",
+          });
+          clearTimeout(timer);
+          const text = await res.text();
+          return text.slice(0, 15000);
         } catch (err: any) { return "Error: " + err.message; }
       }
 

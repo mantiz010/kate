@@ -43,6 +43,13 @@ const SKILL_KEYWORDS: Record<string, string[]> = {
   "builtin.vision":      ["image", "photo", "picture", "screenshot", "ocr", "vision", "see", "look at", "analyze image", "pcb photo", "camera"],
   "builtin.taskboard":   ["task", "todo", "project", "assign", "deadline", "tracking", "board", "backlog", "sprint", "open tasks"],
   "builtin.notify":      ["notify", "alert", "notification", "send alert", "tell me", "push", "message me", "warn me"],
+  "custom.weather":      ["weather", "forecast", "temperature outside", "rain", "wind", "humidity outside"],
+  "custom.zigbee-manager": ["zigbee", "z2m", "zigbee2mqtt", "pair", "pairing", "zigbee device", "zigbee devices"],
+  "custom.pve-nodes":    ["pve node", "proxmox node", "pve cluster", "list nodes", "node status"],
+  "custom.ha-status-run": ["home assistant", "ha status", "hass", "ha diagnostics", "automation", "entity", "light", "switch", "scene"],
+  "custom.uptime":       ["uptime", "how long", "running since", "load average"],
+  "custom.system-health-monitor": ["system health", "health monitor", "resource monitor", "cpu usage", "memory usage", "disk usage"],
+  "custom.device-discovery": ["discover", "find devices", "new device", "catalog devices", "device discovery"],
 };
 
 const ALWAYS_INCLUDE = ["builtin.shell", "builtin.files", "builtin.memory", "builtin.websearch"];
@@ -80,6 +87,11 @@ const INTENT_PATTERNS: Array<{ pattern: RegExp; skills: string[] }> = [
   { pattern: /pcb.*photo|board.*image|schematic.*image|circuit.*photo/i, skills: ["builtin.vision", "builtin.pcb"] },
   { pattern: /task|todo|project.*track|backlog|what.s open|my tasks|create.*task/i, skills: ["builtin.taskboard"] },
   { pattern: /notify|alert me|send.*notification|push.*message|tell me when|warn me/i, skills: ["builtin.notify"] },
+  { pattern: /weather|forecast|temperature outside|is it (rain|cold|hot|warm)|how.s the weather/i, skills: ["custom.weather"] },
+  { pattern: /zigbee|z2m|zigbee2mqtt|pair.*device|pairing mode|zigbee device/i, skills: ["custom.zigbee-manager", "builtin.mqtt"] },
+  { pattern: /home assistant|hass|ha status|ha (entity|automation|light|switch|scene|service)/i, skills: ["custom.ha-status-run", "custom.zigbee-manager"] },
+  { pattern: /discover.*device|find.*device|new device|what.s on.*network.*device/i, skills: ["custom.device-discovery", "builtin.network"] },
+  { pattern: /pve node|proxmox node|cluster node|node status/i, skills: ["custom.pve-nodes", "builtin.proxmox"] },
 ];
 
 // Force these skills for matching keywords — ALWAYS include all their tools
@@ -98,6 +110,10 @@ const FORCE_SKILLS: Array<{words: string[]; skillId: string}> = [
   { words: ["memory", "remember", "recall", "what do you know"], skillId: "builtin.memory" },
   { words: ["file", "read", "write", "list", "directory", "folder"], skillId: "builtin.files" },
   { words: ["shell", "command", "run", "execute"], skillId: "builtin.shell" },
+  { words: ["weather", "forecast", "temperature outside"], skillId: "custom.weather" },
+  { words: ["zigbee", "z2m", "zigbee2mqtt", "pairing"], skillId: "custom.zigbee-manager" },
+  { words: ["home assistant", "hass", "ha status"], skillId: "custom.ha-status-run" },
+  { words: ["discover", "device discovery"], skillId: "custom.device-discovery" },
 ];
 
 export function filterTools(

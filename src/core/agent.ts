@@ -201,52 +201,111 @@ export class Agent {
   }
 
   /**
-   * Build system prompt.
+   * Build dynamic system prompt based on loaded skills and message context.
+   * Only includes domain-specific rules when relevant to the current query.
    */
-  private buildSystemPrompt(memoryContext: string): string {
+  private buildSystemPrompt(memoryContext: string, message?: string): string {
     const name = this.config?.agent?.name || "Kate";
-    return `You are ${name}, an autonomous AI engineer managing a homelab.
+    const skillList = this.skills.list();
+    const skillNames = skillList.map(s => s.name).join(", ");
+    const toolCount = skillList.reduce((n, s) => n + s.tools.length, 0);
 
-YOU THINK FOR YOURSELF. You research, design, choose components, and build.
-You are not a copy machine. You make engineering decisions.
+    // Core identity + rules (always included, compact)
+    let prompt = `You are ${name}, an autonomous AI agent with ${skillList.length} skills and ${toolCount} tools.
 
-CORE RULES:
+RULES:
 1. Greetings — reply naturally, no tools.
 2. Tasks — act immediately, no permission needed.
 3. If something fails — try a different approach.
 4. RESEARCH FIRST — for open-ended requests, use web search before writing code.
-- When searching for prices, if search results do not show actual prices, use web_fetch to load the actual page and extract the price directly. Do not give estimated prices — always fetch real data.
-5. Present ideas and let the user choose before building.
+5. When searching for prices, use web_fetch to load actual pages. Never guess prices.
+6. Present ideas and let the user choose before building.
+7. You think for yourself. You make engineering decisions.
 
-ENGINEERING DECISIONS:
-- YOU choose the best sensor for each project. Do NOT default to HTU21D.
-- Before writing code: check what libraries exist with ls ~/Arduino/libraries/ | grep -i <type>
-- Or search the web: search "best sensor for <application>"
-- Read library header files to learn the real API: read_file ~/Arduino/libraries/<lib>/src/<header>.h
-- Pick the right protocol: WiFi/ETBus for indoor, Zigbee/LoRa for outdoor/battery, MQTT for cloud.
+YOUR SKILLS: ${skillNames}
+
+HOMELAB:
+- Kate VM: 172.168.1.25 (VM 104)
+- Ollama: 172.168.1.162 (Tesla P100 16GB + Tesla P4 8GB, qwen3-coder)
+- Proxmox: 172.168.1.204 — use pve_nodes/pve_vms tools, NOT ssh
+- Home Assistant: 172.168.1.8
+`;
+
+    // Conditionally inject domain-specific context based on what the user is asking
+    if (message) {
+      const msg = message.toLowerCase();
+
+      // Arduino/ESP32/firmware context — only when relevant
+      if (/arduino|esp32|esp8266|sensor|firmware|sketch|compile|upload|library|blink|i2c|spi/.test(msg)) {
+        prompt += `
+ARDUINO/ESP32 RULES:
+- Before writing code: check libraries with ls ~/Arduino/libraries/ | grep -i <type>
+- Read library headers to learn the real API: read_file ~/Arduino/libraries/<lib>/src/<header>.h
 - NEVER guess a library API. Read the header file first.
-
-COMPILE RULES — THESE ARE FACTS:
-- Class HTU21D (NOT SparkFunHTU21D). begin() returns void. Just call htu.begin() — no if check.
+- Class HTU21D (NOT SparkFunHTU21D). begin() returns void.
 - Class BME280 (NOT SparkFunBME280). Use readTempC(), readFloatHumidity(), readFloatPressure().
-- Class Adafruit_INA219. begin() returns void. Just call ina.begin() — no if check.
-- Class SparkFun_ENS160. Use begin(), getAQI(), getECO2(), getTVOC().
-- MQTT and ET-Bus are DIFFERENT protocols. Never mix them.
-- ESP8266: use #include <ESP8266WiFi.h>. ESP32: use #include <WiFi.h>.
+- Class Adafruit_INA219. begin() returns void.
+- ESP8266: #include <ESP8266WiFi.h>. ESP32: #include <WiFi.h>.
+- Pick protocol: WiFi/ETBus for indoor, Zigbee/LoRa for outdoor/battery, MQTT for cloud.
+`;
+      }
 
-ET-BUS PATTERN (when user asks for ET-Bus):
+      // ET-Bus context — only when relevant
+      if (/etbus|et-bus|et bus/.test(msg)) {
+        prompt += `
+ET-BUS PATTERN:
   ETBusWiFiManager wm; ETBus etbus;
   wm.begin("Name"); etbus.begin(name, "sensor.type", "Name", "v1.0");
   etbus.enableEncryptionHex(psk.c_str()); etbus.loop();
   StaticJsonDocument<128> payload; payload["key"] = value;
   etbus.sendState(payload.as<JsonObject>());
+- MQTT and ET-Bus are DIFFERENT protocols. Never mix them.
+`;
+      }
 
-YOUR HOMELAB:
-- Kate VM: 172.168.1.25 (VM 104) — run commands here
-- Ollama: 172.168.1.162 — Tesla P100 16GB + Tesla P4 8GB, qwen3-coder
-- Proxmox: 172.168.1.204 — use pve_nodes/pve_vms tools, NOT ssh
-- Home Assistant: 172.168.1.8
-${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" : ""}`;
+      // Docker context
+      if (/docker|container|compose|image|dockerfile/.test(msg)) {
+        prompt += `
+DOCKER: Use docker tools for container management. Check running containers with docker_ps before making changes.
+`;
+      }
+
+      // Network context
+      if (/network|scan|ping|ip|subnet|device|nmap|mac/.test(msg)) {
+        prompt += `
+NETWORK: Subnet 172.168.1.0/24. Use net_scan for full scan with IP, MAC, hostname. Use net_find_esp for ESP devices. Use net_scan_services for service discovery.
+IMPORTANT: When net_scan returns a table of devices, show the FULL TABLE to the user as-is. Do NOT summarize it into prose. The user wants to see every IP and MAC address.
+`;
+      }
+
+      // Task/project management
+      if (/task|todo|project|backlog|deadline/.test(msg)) {
+        prompt += `
+TASKS: Use task_create/task_list/task_update to manage tasks. Always show task IDs so user can reference them.
+`;
+      }
+
+      // Vision
+      if (/image|photo|picture|screenshot|ocr|vision|look at|analyze/.test(msg)) {
+        prompt += `
+VISION: Use vision_analyze for images, vision_ocr for text extraction, vision_describe_pcb for circuit boards. Accepts file paths.
+`;
+      }
+
+      // Notifications
+      if (/notify|alert|notification|warn me|tell me/.test(msg)) {
+        prompt += `
+NOTIFICATIONS: Use notify_send (multi-channel), notify_ha (Home Assistant), notify_alert (urgent, all channels). Channels: ha, mqtt, ntfy, log.
+`;
+      }
+    }
+
+    // Memory context at the end
+    if (memoryContext) {
+      prompt += `\nCONTEXT FROM MEMORY:\n${memoryContext}\n`;
+    }
+
+    return prompt;
   }
 
   /**
@@ -318,8 +377,8 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
       log("📋", "PLANNER", "Complex task detected — plan prompt injected", "36");
     }
 
-    // Build messages — memory only in system prompt (no duplication)
-    const systemPrompt = this.buildSystemPrompt(memoryContext + lessonsContext);
+    // Build messages — dynamic system prompt based on message context
+    const systemPrompt = this.buildSystemPrompt(memoryContext + lessonsContext, msg.content);
     const history = this.sessions.get(sessionId) || [];
 
     // Smart history management: compress old messages instead of hard-truncating.
@@ -505,10 +564,28 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
       finalResponse = toolResults.filter(r => r && !r.startsWith("Error:")).join("\n\n");
     }
 
-    // Always include tool results that contain code or compile output
+    // Always include tool results that contain structured data (tables, code, compile output)
+    // The model tends to summarize these away — force them into the response
     if (toolResults.length > 0) {
-      const codeResults = toolResults.filter(r => 
-        r && r.length > 100 && !r.startsWith("Error:") && 
+      // Debug: log what tool results contain
+      for (const r of toolResults) {
+        if (r.length > 100) log("📊", "RESULT", `len=${r.length} hasMAC=${r.includes("MAC Address")} first80=${r.slice(0, 80)}`, "33");
+      }
+      // Force-include scan tables that have MAC addresses or structured data
+      const tableResults = toolResults.filter(r =>
+        r && r.length > 200 && !r.startsWith("Error:") &&
+        (r.includes("MAC Address") || r.includes("lladdr") || r.includes("════") || r.includes("────"))
+      );
+      if (tableResults.length > 0) {
+        // Strip any instruction lines and wrap in code block
+        const cleanTable = tableResults.map(r => r.replace(/\nIMPORTANT:.*$/gm, "").replace(/\nSHOW THIS.*$/gm, "").trim()).join("\n\n");
+        if (!finalResponse.includes("MAC") && !finalResponse.includes("lladdr")) {
+          finalResponse = (finalResponse ? finalResponse + "\n\n" : "") + "```\n" + cleanTable + "\n```";
+        }
+      }
+
+      const codeResults = toolResults.filter(r =>
+        r && r.length > 100 && !r.startsWith("Error:") &&
         (r.includes("```cpp") || r.includes("✅ Written") || r.includes("✅ Compiled") || r.includes("❌ Compile"))
       );
       if (codeResults.length > 0 && !finalResponse.includes("```cpp")) {
