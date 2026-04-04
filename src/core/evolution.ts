@@ -1,5 +1,5 @@
 import { createLogger } from "./logger.js";
-import { eventBus, Events } from "./eventbus.js";
+import { eventBus, EVENTS } from "./eventbus.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -132,35 +132,23 @@ export class EvolutionEngine {
     loadState();
 
     // Listen to all tool failures
-    eventBus.addRule({
-      id: "evolve-tool-fail",
-      name: "Self-Evolution: Tool Failure Tracker",
-      trigger: Events.TOOL_FAIL,
-      enabled: true,
-      action: async (event) => {
-        const error = (event.data.error as string) || "";
-        const source = event.data.toolName as string || event.source;
-        await this.processError(error, source);
-      },
+    eventBus.subscribe(EVENTS.TOOL_FAILED, "evolution", async (event) => {
+      const error = (event.data.error as string) || "";
+      const source = event.data.toolName as string || event.source;
+      await this.processError(error, source);
     });
 
     // Listen to skill errors
-    eventBus.addRule({
-      id: "evolve-skill-error",
-      name: "Self-Evolution: Skill Error Tracker",
-      trigger: Events.SKILL_ERROR,
-      enabled: true,
-      action: async (event) => {
-        const error = (event.data.error as string) || "";
-        await this.processError(error, event.source);
-      },
+    eventBus.subscribe(EVENTS.SKILL_ERROR, "evolution", async (event) => {
+      const error = (event.data.error as string) || "";
+      await this.processError(error, event.source);
     });
 
     // Periodic self-review (every 30 minutes)
     setInterval(() => this.selfReview(), 30 * 60 * 1000);
 
     log.info("Evolution engine started — watching for errors to learn from");
-    eventBus.fire(Events.EVOLVE_START, "evolution", { message: "Self-evolution active" });
+    eventBus.fire("evolution.start", "evolution", { message: "Self-evolution active" });
   }
 
   async processError(error: string, source: string) {
@@ -191,7 +179,7 @@ export class EvolutionEngine {
           problem: error.slice(0, 200), solution: result, applied: true,
         });
 
-        eventBus.fire(Events.EVOLVE_FIX, "evolution", {
+        eventBus.fire("evolution.fix", "evolution", {
           category: fix.category, error: error.slice(0, 100), fix: result,
         });
 
@@ -219,7 +207,7 @@ export class EvolutionEngine {
 
     if (recentErrors.length === 0) {
       log.info("Self-review: No recent errors. System healthy.");
-      eventBus.fire(Events.HEALTH_OK, "evolution", { message: "Self-review passed" });
+      eventBus.fire(EVENTS.SYSTEM_HEALTH, "evolution", { message: "Self-review passed" });
       return;
     }
 
@@ -230,7 +218,7 @@ export class EvolutionEngine {
       for (const [key, p] of unfixed) {
         log.warn(`  "${key}": ${p.count}x from ${p.sources.join(", ")}`);
       }
-      eventBus.fire(Events.HEALTH_WARN, "evolution", {
+      eventBus.fire(EVENTS.HEALTH_WARN, "evolution", {
         message: `${unfixed.length} recurring error patterns`,
         patterns: unfixed.map(([k, p]) => ({ key: k, count: p.count })),
       });
@@ -250,7 +238,7 @@ export class EvolutionEngine {
       if (broken > 0) {
         log.warn(`Self-review: ${broken} broken custom skill(s) found`);
         // Auto-quarantine
-        eventBus.fire(Events.SKILL_ERROR, "evolution", { error: `${broken} broken skills`, count: broken });
+        eventBus.fire(EVENTS.SKILL_ERROR, "evolution", { error: `${broken} broken skills`, count: broken });
       }
     }
   }

@@ -11,6 +11,7 @@ import { saveMessage } from "./chathistory.js";
 import { needsPlan, buildPlanPrompt } from "./planner.js";
 import { recordSuccess, recordFailure, getRelevantLessons } from "./learner.js";
 import { filterTools as smartFilterTools } from "./toolfilter.js";
+import { ContextCache } from "./contextcache.js";
 
 const MAX_ROUNDS = 100;
 const OLLAMA_URL = "http://172.168.1.162:11434";
@@ -42,6 +43,7 @@ export class Agent {
   onToken?: (token: string) => void;
 
   private sessions: Map<string, Message[]> = new Map();
+  private cache = new ContextCache();
 
   constructor(config: any, providers: any, skills: SkillManager, memory: InMemoryStore | any) {
     this.skills = skills;
@@ -261,6 +263,19 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
 
     log("▶", "INPUT", `"${msg.content}"`, "36");
 
+    // Quick response — skip LLM entirely for greetings/trivial messages
+    const quickReply = this.cache.getQuickResponse(msg.content);
+    if (quickReply) {
+      log("⚡", "QUICK", `Instant reply: "${quickReply.slice(0, 60)}"`, "32");
+      try { saveMessage(sessionId, "user", msg.content); } catch {}
+      try { saveMessage(sessionId, "assistant", quickReply); } catch {}
+      const history = this.sessions.get(sessionId) || [];
+      history.push({ role: "user", content: msg.content });
+      history.push({ role: "assistant", content: quickReply });
+      this.sessions.set(sessionId, history);
+      return quickReply;
+    }
+
     // Save to history
     try { saveMessage(sessionId, "user", msg.content); } catch {}
 
@@ -307,14 +322,39 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
     const systemPrompt = this.buildSystemPrompt(memoryContext + lessonsContext);
     const history = this.sessions.get(sessionId) || [];
 
-    // Keep last 6 exchanges (12 messages)
-    if (history.length > 12) history.splice(0, history.length - 12);
+    // Smart history management: compress old messages instead of hard-truncating.
+    // Keep last 8 messages verbatim, compress older ones into a summary.
+    // This preserves ~30 exchanges worth of context in the same token budget.
+    let compressedHistory: Message[];
+    if (history.length > 16) {
+      const asSimple = history.map(m => ({ role: m.role, content: m.content }));
+      const compressed = this.cache.compressConversation(asSimple, 8);
+      compressedHistory = compressed.map(m => ({ role: m.role as Message["role"], content: m.content }));
+      log("🗜", "COMPRESS", `${history.length} msgs → ${compressedHistory.length} (kept 8 recent + summary)`, "33");
+    } else {
+      compressedHistory = history;
+    }
 
     const messages: Message[] = [
       { role: "system", content: systemPrompt },
-      ...history,
+      ...compressedHistory,
       { role: "user", content: userContent },
     ];
+
+    // Check response cache — skip LLM if we've seen this exact conversation state
+    const toolNames = this.skills.getAllTools().map(t => t.name);
+    const cachedResponse = this.cache.getResponse(
+      messages.map(m => ({ role: m.role, content: m.content })),
+      toolNames
+    );
+    if (cachedResponse) {
+      log("💾", "CACHE HIT", `Returning cached response`, "32");
+      try { saveMessage(sessionId, "assistant", cachedResponse); } catch {}
+      history.push({ role: "user", content: msg.content });
+      history.push({ role: "assistant", content: cachedResponse });
+      this.sessions.set(sessionId, history);
+      return cachedResponse;
+    }
 
     // Get all tools and filter using intent-based smart matching
     const allTools = this.getToolSchemas();
@@ -359,21 +399,28 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
         tool_calls: response.toolCalls,
       });
 
-      // Execute each tool call
-      for (const tc of response.toolCalls) {
+      // Execute tool calls in parallel for speed
+      const pendingCalls = response.toolCalls.filter((tc: any) => {
         const fnName = tc.function?.name || "";
         const fnArgs = tc.function?.arguments || {};
-        totalToolCalls++;
-
-        // Skip if same tool+args called before
         const callKey = fnName + ":" + JSON.stringify(fnArgs);
         if (calledTools.has(callKey) && !fnName.includes("compile")) {
           log("  ⏭", fnName, "SKIPPED (duplicate)", "33");
           messages.push({ role: "tool", content: "Already called — see previous result.", tool_call_id: tc.id || fnName });
-          continue;
+          return false;
         }
         calledTools.add(callKey);
+        return true;
+      });
 
+      if (pendingCalls.length > 1) {
+        log("  ⚡", "PARALLEL", `Executing ${pendingCalls.length} tools concurrently`, "36");
+      }
+
+      const execPromises = pendingCalls.map(async (tc: any) => {
+        const fnName = tc.function?.name || "";
+        const fnArgs = tc.function?.arguments || {};
+        totalToolCalls++;
         log("  →", fnName, JSON.stringify(fnArgs).slice(0, 80), "0");
 
         const start = Date.now();
@@ -385,14 +432,9 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
 
         // Record outcome for learning
         try {
-          if (success) {
-            recordSuccess(fnName, JSON.stringify(fnArgs).slice(0, 200), result.slice(0, 200));
-          } else {
-            recordFailure(fnName, JSON.stringify(fnArgs).slice(0, 200), result.slice(0, 200));
-          }
+          if (success) recordSuccess(fnName, JSON.stringify(fnArgs).slice(0, 200), result.slice(0, 200));
+          else recordFailure(fnName, JSON.stringify(fnArgs).slice(0, 200), result.slice(0, 200));
         } catch {}
-
-        toolResults.push(result);
 
         // auto-remember compile outcomes
         if (fnName.includes("compile") && result.includes("error:")) {
@@ -403,15 +445,50 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
           try { await this.executeTool("remember", { key: "ok_" + Date.now(), value: result.split("\n")[0].slice(0, 200), category: "fact", importance: 0.5 }, userId, "auto"); } catch {}
         }
 
-        // Add tool result back to messages — on failure, append recovery guidance
+        return { tc, fnName, result, success };
+      });
+
+      const results = await Promise.all(execPromises);
+
+      // Add results back to messages in order (preserves tool_call_id alignment)
+      for (const { tc, result, success } of results) {
+        toolResults.push(result);
         const toolContent = success
           ? result.slice(0, 4000)
           : result.slice(0, 3000) + "\n\n⚠️ This tool failed. Try a different approach or different tool. Do NOT repeat the exact same call.";
         messages.push({
           role: "tool",
           content: toolContent,
-          tool_call_id: tc.id || fnName,
+          tool_call_id: tc.id || tc.function?.name || "",
         });
+      }
+    }
+
+    // Auto-expand: if model got no results and we used a filtered tool set,
+    // retry once with ALL tools so Kate doesn't say "I can't" when she actually can
+    if (!lastContent && totalToolCalls === 0 && tools.length < allTools.length) {
+      log("🔓", "EXPAND", `Smart filter too narrow (${tools.length} tools) — retrying with all ${allTools.length}`, "33");
+      const expandResponse = await this.callOllama(messages, allTools);
+      if (expandResponse.content) {
+        lastContent = expandResponse.content;
+      }
+      if (expandResponse.toolCalls?.length) {
+        const callNames = expandResponse.toolCalls.map((tc: any) => tc.function?.name || "?").join(", ");
+        log("🔧", "EXPAND TOOLS", callNames, "33");
+        messages.push({ role: "assistant", content: expandResponse.content || "", tool_calls: expandResponse.toolCalls });
+        for (const tc of expandResponse.toolCalls) {
+          const fnName = tc.function?.name || "";
+          const fnArgs = tc.function?.arguments || {};
+          totalToolCalls++;
+          const result = await this.executeTool(fnName, fnArgs, userId, "web");
+          const success = !result.startsWith("Error:");
+          log("  " + (success ? "✓" : "✗"), fnName, result.slice(0, 80), success ? "32" : "31");
+          toolResults.push(result);
+          messages.push({ role: "tool", content: result.slice(0, 4000), tool_call_id: tc.id || fnName });
+        }
+        // One more round to get the final text response
+        const finalRound = await this.callOllama(messages, allTools);
+        if (finalRound.content) lastContent = finalRound.content;
       }
     }
 
@@ -466,6 +543,16 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
       finalResponse = "I couldn't complete that. Try being more specific, like:\n• list files in ~/Arduino\n• create an ESP32 MQTT sensor\n• show my proxmox VMs\n• check system health";
     }
 
+    // Cache this response for future identical queries (only cache tool-free responses)
+    if (totalToolCalls === 0 && finalResponse) {
+      this.cache.setResponse(
+        messages.map(m => ({ role: m.role, content: m.content })),
+        toolNames,
+        finalResponse,
+        Math.ceil(finalResponse.length / 4), // rough token estimate
+      );
+    }
+
     // Update ET-Bus state file
     try {
       const fs = await import("node:fs");
@@ -484,9 +571,10 @@ ${memoryContext ? "\n⚠️ CONTEXT (use this first):\n" + memoryContext + "\n" 
     // Save to history
     try { saveMessage(sessionId, "assistant", finalResponse); } catch {}
 
-    // Update session
+    // Update session — keep up to 40 raw messages (compression handles the rest)
     history.push({ role: "user", content: msg.content });
     history.push({ role: "assistant", content: finalResponse });
+    if (history.length > 40) history.splice(0, history.length - 40);
     this.sessions.set(sessionId, history);
 
     // Deduplicate — remove repeated blocks

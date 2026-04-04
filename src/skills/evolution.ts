@@ -1,5 +1,5 @@
 import type { Skill, SkillContext } from "../core/types.js";
-import { eventBus, Events } from "../core/eventbus.js";
+import { eventBus, EVENTS } from "../core/eventbus.js";
 import { createLogger } from "../core/logger.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -151,10 +151,10 @@ const evolution: Skill = {
   async onLoad() {
     loadData();
     // Wire into event bus — track all errors
-    eventBus.addRule("evolution:track-errors", "tool:failure", (evt) => {
+    eventBus.subscribe(EVENTS.TOOL_FAILED, "evolution", async (evt) => {
       trackError(evt.source, String(evt.data.error || ""));
     });
-    eventBus.addRule("evolution:track-agent-errors", "agent:error", (evt) => {
+    eventBus.subscribe(EVENTS.AGENT_ERROR, "evolution", async (evt) => {
       trackError("agent", String(evt.data.error || evt.data.message || ""));
     });
     log.info("Self-evolution engine active");
@@ -258,16 +258,16 @@ const evolution: Skill = {
             };
         }
 
-        const id = eventBus.addRule(name, pattern, handler);
-        return `Rule created: "${name}"\n  Pattern: ${pattern}\n  Action: ${action}\n  ID: ${id}`;
+        eventBus.subscribe(pattern, `rule:${name}`, handler);
+        return `Rule created: "${name}"\n  Pattern: ${pattern}\n  Action: ${action}`;
       }
 
       case "evolve_rules": {
         const rules = eventBus.getRules();
         if (rules.length === 0) return "No event rules active.";
         return rules.map(r =>
-          `  [${r.id}] ${r.name}\n    Pattern: ${r.pattern} | Enabled: ${r.enabled} | Triggers: ${r.triggerCount}`
-        ).join("\n\n");
+          `  Pattern: ${r.pattern} | Action: ${r.action} | Enabled: ${r.enabled}`
+        ).join("\n");
       }
 
       case "evolve_event_history": {
@@ -297,9 +297,9 @@ const evolution: Skill = {
           "Evolution Engine Stats",
           `  Error patterns tracked: ${errorPatterns.length}`,
           `  Improvements applied: ${improvements.length}`,
-          `  Event bus: ${bs.emitted} emitted, ${bs.handled} handled, ${bs.errors} errors`,
+          `  Event bus: ${bs.total} events, ${bs.subscriptions} subscriptions`,
           `  Active rules: ${bs.rules}`,
-          `  Event history: ${bs.history}`,
+          `  Event types: ${Object.entries(bs.byType).map(([k, v]) => `${k}(${v})`).join(", ") || "none"}`,
         ].join("\n");
       }
 
@@ -314,7 +314,7 @@ const evolution: Skill = {
           `Error Patterns: ${errorPatterns.length} tracked, ${recurring.length} recurring`,
           `Recent Errors (1hr): ${recentErrors.length}`,
           `Auto-Fixes Applied: ${fixedCount}`,
-          `Event Bus: ${bs.emitted} events, ${bs.rules} rules`,
+          `Event Bus: ${bs.total} events, ${bs.rules} rules`,
           "",
         ];
 
