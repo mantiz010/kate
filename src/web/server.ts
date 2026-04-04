@@ -68,6 +68,17 @@ export async function startWebServer(port: number = 3201) {
   const webDir = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "web");
 
   const server = http.createServer(async (req, res) => {
+    // CORS preflight for IDE and external API clients
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Max-Age": "86400",
+      });
+      return res.end();
+    }
+
     // API routes
     if (req.url === "/api/message" && req.method === "POST") {
         let body = "";
